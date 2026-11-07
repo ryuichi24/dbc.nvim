@@ -1,6 +1,6 @@
 # dbc.nvim
 
-A native-buffer database workspace for Neovim. Browse schemas, edit SQL,
+A vim buffer database client for Neovim.. Browse schemas, edit SQL,
 execute it asynchronously with the installed `mysql`, `psql`, or `sqlite3` CLI,
 and navigate/yank results using ordinary Vim motions. No runtime plugin dependencies.
 
