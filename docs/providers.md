@@ -33,8 +33,8 @@ the UI nor a MySQL/PostgreSQL adapter needs to know how AWS SSM or SSH operates.
 | SSM forwarding through ECS/SSM plus RDS IAM authentication | Built-in [`aws_ssm_rds_iam`](aws-ssm-rds-iam.md) |
 | SSH tunnel or another cloud proxy | A registered custom provider or a user-supplied `command` helper |
 
-The native AWS provider implements the reference script's connection flow without
-invoking that script. Custom helper scripts still need to implement the protocol
+The native AWS provider manages SSM forwarding and RDS IAM authentication without
+an external helper script. Custom helper scripts still need to implement the protocol
 below; interactive scripts cannot serve as command helpers unchanged.
 
 ## Configuration
@@ -63,12 +63,12 @@ require("dbc").setup({
     {
       name = "rds-dev-read",
       adapter = "mysql",
-      database = "coredb",
+      database = "app",
       provider = {
         name = "command",
         command = { "/absolute/path/to/your-rds-helper" },
         options = {
-          aws_profile = "core_dev",
+          aws_profile = "app-dev",
           region = "ap-northeast-1",
           local_port = 13360,
           db_user = "your_user_read",
@@ -206,9 +206,9 @@ There is no shell interpolation. Each invocation receives JSON on stdin:
 ```json
 {
   "id": "opaque session identifier generated before open",
-  "options": { "aws_profile": "core_dev", "local_port": 13360 },
+  "options": { "aws_profile": "app-dev", "local_port": 13360 },
   "session": { "provider_owned": "resource descriptor from open" },
-  "database": "coredb"
+  "database": "app"
 }
 ```
 
@@ -237,10 +237,9 @@ of its own AWS/SSH subprocesses; killing a helper process alone is not a portabl
 process-tree cleanup mechanism. Temporary files required for a whole session
 belong to helper close; for per-request file release, use a registered Lua provider.
 
-## Mapping the SSM / RDS IAM reference workflow
+## SSM / RDS IAM workflow
 
-The built-in [AWS provider](aws-ssm-rds-iam.md) implements the reference script's
-logic through this lifecycle:
+The built-in [AWS provider](aws-ssm-rds-iam.md) implements this lifecycle:
 
 1. **Connect/open:** validate the AWS SSO session; resolve the reader/writer RDS
    endpoint and ECS bastion target; establish SSM forwarding; wait for readiness.
@@ -253,10 +252,10 @@ logic through this lifecycle:
 3. **Close:** stop only this session's forwarding processes and remove its state.
    Do not scan a port and terminate unrelated listeners.
 
-Product/environment/permission selection becomes explicit provider configuration.
+Application/environment/permission selection uses explicit provider configuration.
 AWS SSO login remains external; an expired session should return an actionable
 error. The native provider owns discovery and forwarding, so you do not need to
-run the interactive script's `client` or `cli` modes first.
+run a separate tunnel script first.
 
 Provider sessions can persist while database sessions remain per execution.
 Keeping an SSM tunnel alive does not make SQL transactions or temporary tables

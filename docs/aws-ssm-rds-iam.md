@@ -1,6 +1,6 @@
 # AWS SSM + RDS IAM provider
 
-`aws_ssm_rds_iam` implements the connection flow from the reference shell script
+`aws_ssm_rds_iam` manages AWS SSM port forwarding and RDS IAM authentication
 inside Neovim. No helper script or jq is required. It supports the MySQL and
 PostgreSQL adapters on macOS/Linux.
 
@@ -10,39 +10,38 @@ PostgreSQL adapters on macOS/Linux.
 - An active AWS profile with permission to discover the database/bastion and
   start SSM sessions. The existing bastion must support remote-host forwarding
   and be able to reach RDS. The DB user must have RDS IAM authentication configured.
-- A readable RDS CA bundle. Reuse the `global-bundle.pem` downloaded by your script,
-  or download it from
+- A readable RDS CA bundle. Download `global-bundle.pem` from
   <https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem>.
 
 Perform interactive SSO login in a terminal before using the connection:
 
 ```sh
-aws sso login --profile core_dev
+aws sso login --profile app-dev
 ```
 
 The plugin validates that identity; it does not launch an interactive SSO flow.
 
 ## MySQL configuration
 
-This example uses the Core development resource names from the reference script.
-Replace the username and CA path with your own values.
+This example uses fictional application resources. Replace the AWS profile,
+resource names, database, username, region, port, and CA path with your own values.
 
 ```lua
 require("dbc").setup({
   connections = {
     {
-      name = "core-dev-read",
+      name = "app-dev-read",
       adapter = "mysql",
-      database = "coredb",
+      database = "app",
       provider = {
         name = "aws_ssm_rds_iam",
-        aws_profile = "core_dev",
+        aws_profile = "app-dev",
         region = "ap-northeast-1",
-        rds_identifier = "core-dev-aurora-cluster",
+        rds_identifier = "app-dev-aurora-cluster",
         rds_type = "cluster",
         endpoint = "writer",
-        ecs_cluster = "core-dev-infra02",
-        ecs_service = "core-dev-bastion-service",
+        ecs_cluster = "app-dev-cluster",
+        ecs_service = "app-dev-bastion-service",
         container = "bastion",
         db_user = "your_user_read",
         local_port = 13360,
@@ -65,12 +64,55 @@ independent. For an environment without a separate reader, use `endpoint = "writ
 even when authenticating as a read-only user. Selecting a reader endpoint never
 silently falls back to the writer.
 
-Do not run the old tunnel script on the same local port at the same time. An
+Do not run another tunnel on the same local port at the same time. An
 occupied port is reported as an error; the plugin does not reuse it or terminate
 its owner. IAM profiles should omit login-path/defaults-file password settings
 that could override the dynamic token supplied to the MySQL child environment.
 
 ## Configuration reference
+
+### Connection helper
+
+Use `require("dbc").rds_connection(name, config)` to build a connection from a
+flat configuration table:
+
+```lua
+local dbc = require("dbc")
+
+dbc.setup({
+  connections = {
+    dbc.rds_connection("app-dev-read", {
+      database = "app",
+      aws_profile = "app-dev",
+      region = "ap-northeast-1",
+      rds_identifier = "app-dev-aurora-cluster",
+      endpoint = "writer",
+      ecs_cluster = "app-dev-cluster",
+      ecs_service = "app-dev-bastion-service",
+      db_user = "your_user_read",
+      local_port = 13360,
+      ssl_ca = "~/.config/dbc/global-bundle.pem",
+    }),
+  },
+  execution = { timeout_ms = 60000 },
+})
+```
+
+Replace the resource names, username, and CA path with your own values.
+The helper returns a normal connection profile: `adapter` (default `"mysql"`)
+and `database` become top-level fields; all other configuration fields are copied
+into `provider`, whose name is always `"aws_ssm_rds_iam"`. It does not mutate the
+input, validate credentials, or start AWS processes. Normal configuration
+validation runs in `setup()`.
+
+All provider options below are supported, including `rds_host`, an explicit
+`target` instead of ECS discovery, and `adapter = "postgres"`. Provider defaults
+remain unchanged: cluster, writer endpoint, and `bastion` container. Names,
+profiles, regions, and database users are explicit; the helper does not infer
+company-specific naming conventions. Give independently active connections
+unique names and local ports.
+
+### Provider fields
 
 Fields below belong inside `provider`:
 
@@ -96,7 +138,7 @@ Fields below belong inside `provider`:
 
 Discovery takes the first task returned by `ecs list-tasks`, then finds the named
 container's runtime ID in `ecs describe-tasks`. It constructs the same
-`ecs:<cluster>_<task-id>_<runtime-id>` target as the reference script. Supplying an
+`ecs:<cluster>_<task-id>_<runtime-id>` SSM target. Supplying an
 explicit `target` also permits an existing EC2 SSM target such as `i-...`.
 
 Use the actual RDS hostname for `rds_host`, not the local forwarding address.

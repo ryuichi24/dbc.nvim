@@ -330,20 +330,20 @@ Choose `adapter` for the database dialect and `provider` for the connection
 strategy. Existing profiles default to `direct`, using configured endpoints and
 client-native authentication. The built-in `aws_ssm_rds_iam` provider discovers
 RDS/ECS endpoints, opens an SSM tunnel, and generates IAM tokens for new client
-processes. Run `aws sso login --profile core_dev` in a terminal first:
+processes. Run `aws sso login --profile app-dev` in a terminal first:
 
 ```lua
 {
-  name = "core-dev-read",
+  name = "app-dev-read",
   adapter = "mysql",
-  database = "coredb",
+  database = "app",
   provider = {
     name = "aws_ssm_rds_iam",
-    aws_profile = "core_dev",
+    aws_profile = "app-dev",
     region = "ap-northeast-1",
-    rds_identifier = "core-dev-aurora-cluster",
-    ecs_cluster = "core-dev-infra02",
-    ecs_service = "core-dev-bastion-service",
+    rds_identifier = "app-dev-aurora-cluster",
+    ecs_cluster = "app-dev-cluster",
+    ecs_service = "app-dev-bastion-service",
     db_user = "your_user_read",
     local_port = 13360,
     ssl_ca = "/absolute/path/to/global-bundle.pem",
