@@ -1,0 +1,91 @@
+*dbc.txt* Native-buffer database workspace
+
+dbc requires Neovim 0.10+ and an installed mysql or psql CLI. Configure connections via
+require('dbc').setup({ connections = { { name = 'dev', login_path = 'dev' } } }).
+See README.md in the plugin directory for configuration and limitations.
+
+COMMANDS                                                        *:Dbc*
+:Dbc [open]             Open/focus the dashboard tab.
+:Dbc connect            Select a connection; create a query.
+:Dbc query              Create a query bound to the selected database.
+:Dbc next_query         Switch to the next query tab (gt).
+:Dbc previous_query     Switch to the previous query tab (gT).
+:Dbc close_query        Close query tab; preserve SQL buffer; keep one tab open.
+:Dbc actions            Pick a query-generation action for selected sidebar item.
+:[range]Dbc run         Execute buffer or explicit whole-line range.
+:Dbc cancel             Stop the client process.
+:Dbc refresh            Refresh the selected sidebar node.
+:Dbc close              Close dashboard; preserve query buffers.
+
+MAPPINGS                                                        *dbc-mappings*
+Editor: <localleader>r run; <localleader>c cancel (configurable).
+Sidebar: Enter expand/collapse and bind current query on a database/schema;
+         a CREATE DATABASE on connection/profile, CREATE TABLE on database/schema,
+           INSERT template on table;
+         A pick any applicable registered query action;
+          n new query for database under cursor; r read query (also p);
+          R refresh; c connect;
+         q close. The bound database is marked [query].
+Sidebar u opens an UPDATE template on a table, with column assignments and a
+WHERE <condition> placeholder.
+Templates open a new bound query tab and focus the first <...> placeholder.
+INSERT loads column metadata when needed; unavailable metadata uses a generic
+column/value placeholder. Edit placeholders, then execute explicitly as usual.
+Editor header: shows the current query's connection and database.
+               Numbered query tabs highlight the active tab. Each keeps its
+               SQL, binding, cursor, and results. gt/gT cycle query tabs;
+               <localleader>t creates a tab; <localleader>x closes a tab.
+Results: yc yank raw cell; yr yank escaped TSV row; q close result window.
+All panels support ordinary motions, searching, visual selections, and yanking.
+
+LIMITATIONS                                                     *dbc-sessions*
+Each execution uses a fresh client session. Transactions, temporary tables,
+session variables and USE do not persist between runs. Enter on a database or
+schema rebinds the displayed query, preserving its SQL. Other queries retain
+their original bindings.
+Cancel/timeout cannot guarantee server-side rollback. Output is byte-bounded;
+rendered rows are limited. XML-incompatible binary values require explicit HEX.
+Use client-native authentication, never password arguments. MySQL supports
+login_path/defaults_file. PostgreSQL supports service/passfile/sslmode and normal
+libpq environment defaults; configure adapter = 'postgres' and psql 12+.
+PostgreSQL browsing includes schemas; previews qualify table names. Selecting a
+schema does not alter search_path. Run one result-producing PostgreSQL statement
+at a time: CSV cannot frame multiple result sets. Do not use client metacommands.
+
+ADAPTERS                                                        *dbc-adapters*
+require('dbc.adapters').register(name, adapter) registers an adapter before setup.
+Required functions: request(profile, database, sql, credentials), metadata(node),
+children(node, result_sets), preview(node). See docs/adapters.md in the plugin
+directory for the complete contract. The default adapter is mysql.
+Optional quote(identifier), qualify(node, name), and capabilities enable standard
+query actions. Legacy template(node) is supported through a compatibility action.
+
+ACTIONS                                                         *dbc-actions*
+require('dbc.actions').register(action) adds a plugin-style SQL generator.
+Required fields: id, label, node_kinds, generate(ctx). Optional fields include
+requires (metadata), adapter_methods, capabilities, adapters, available, default,
+priority, and allow_missing_metadata. Built-ins use this same registry.
+Sidebar a selects the highest-priority default; A/:Dbc actions opens the picker.
+require('dbc').action(id) invokes a named action on the selected sidebar node.
+Metadata preparation and query-tab opening are handled by the workspace; SQL
+execution remains explicit. See docs/actions.md for the full extension contract.
+
+PROVIDERS                                                       *dbc-providers*
+The adapter selects the database; the provider selects the connection strategy.
+provider = 'direct' is the default, using native client profiles and endpoints.
+provider = { name = 'command', command = { '/path/to/helper' }, options = {...} }
+uses a noninteractive helper implementing JSON open/resolve/close operations.
+provider = { name = 'aws_ssm_rds_iam', ... } uses the native AWS SSM/RDS IAM flow:
+SSO validation, RDS/ECS discovery, owned forwarding, and per-request IAM tokens.
+Run aws sso login externally first; the old connection script is not required.
+See docs/aws-ssm-rds-iam.md for configuration, prerequisites, and PostgreSQL support.
+
+require('dbc.providers').register(name, provider) registers a custom strategy.
+provider.create(profile, context) returns closure functions connect(done),
+resolve(database, done), and close(done). Connect runs once per profile/workspace;
+resolve supplies endpoint/TLS/credentials for every CLI execution; close releases
+owned transport resources. Provider sessions are shared by metadata and queries.
+Connection names must be unique. Tokens never become query-buffer state.
+See docs/providers.md for the lifecycle, cancellation, and RDS IAM design.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
