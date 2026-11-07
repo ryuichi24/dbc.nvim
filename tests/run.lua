@@ -130,12 +130,18 @@ local ok, err = xpcall(function()
 	assert(response.error == "Query timed out")
 
 	local plugin = require("dbc")
+	assert(not pcall(plugin.setup, { ui = { panes = { query = { height = 0 } } } }))
+	assert(not pcall(plugin.setup, { ui = { panes = { results = { width = 1.5 } } } }))
+	assert(not pcall(plugin.setup, { ui = { resize_step = 0 } }))
+	assert(not pcall(plugin.setup, { ui = { resize_step = 1.5 } }))
+
 	plugin.setup({
 		connections = { { name = "fake", executable = temporary, database = "test" } },
 		ui = {
+			resize_step = 2,
 			panes = {
-				sidebar = { number = true },
-				query = { number = true, relativenumber = true },
+				sidebar = { width = 20, number = true },
+				query = { height = 8, number = true, relativenumber = true },
 				results = { relativenumber = true },
 			},
 		},
@@ -147,6 +153,9 @@ local ok, err = xpcall(function()
 	local state = plugin.open()
 	local query = state.query
 
+	assert(vim.api.nvim_win_get_width(state.sidebar_win) == 20)
+	assert(vim.api.nvim_win_get_height(state.query_win) == 8)
+	assert(vim.api.nvim_win_get_width(state.query_win) == vim.api.nvim_win_get_width(state.results_win))
 	assert(plugin.open() == state)
 	assert(vim.bo[state.results].buftype == "nofile" and not vim.bo[state.results].modifiable)
 	assert(vim.bo[query].filetype == "sql" and vim.bo[query].modifiable)
@@ -160,9 +169,32 @@ local ok, err = xpcall(function()
 	assert(vim.api.nvim_get_current_win() == state.sidebar_win)
 
 	vim.fn.maparg("<C-l>", "n", false, true).callback()
+	local height = vim.api.nvim_win_get_height(state.query_win)
+	local restored = function() end
+	vim.keymap.set("n", "j", restored, { buffer = query })
 	vim.fn.maparg("<C-w>j", "n", false, true).callback()
 
+	assert(vim.api.nvim_get_current_win() == state.query_win)
+	assert(vim.api.nvim_win_get_height(state.query_win) == height - 2)
+
+	vim.fn.maparg("j", "n", false, true).callback()
+
+	assert(vim.api.nvim_win_get_height(state.query_win) == height - 4)
+
+	vim.fn.maparg("<C-j>", "n", false, true).callback()
+
 	assert(vim.api.nvim_get_current_win() == state.results_win)
+
+	vim.api.nvim_buf_call(query, function()
+		assert(vim.fn.maparg("j", "n", false, true).callback == restored)
+	end)
+	local width = vim.api.nvim_win_get_width(state.results_win)
+	vim.fn.maparg("<C-w>l", "n", false, true).callback()
+
+	assert(vim.api.nvim_win_get_width(state.results_win) == width + 2)
+	assert(vim.api.nvim_win_get_width(state.query_win) == width + 2)
+
+	require("dbc.resize").stop()
 
 	vim.api.nvim_set_current_win(original_win)
 

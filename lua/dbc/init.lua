@@ -2,8 +2,9 @@ local M = {}
 local defaults = {
 	connections = {},
 	ui = {
-		sidebar_width = 30,
-		results_height = 14,
+		resize_step = 8,
+		sidebar_width = 50,
+		results_height = 30,
 		panes = {
 			sidebar = { number = false, relativenumber = false },
 			query = { number = false, relativenumber = false },
@@ -42,7 +43,7 @@ function M.setup(opts)
 		)
 	end
 
-	for _, key in ipairs({ "sidebar_width", "results_height" }) do
+	for _, key in ipairs({ "sidebar_width", "results_height", "resize_step" }) do
 		local value = config.ui[key]
 		assert(
 			type(value) == "number" and value >= 1 and value == math.floor(value),
@@ -51,6 +52,17 @@ function M.setup(opts)
 	end
 
 	for _, pane in ipairs({ "sidebar", "query", "results" }) do
+		for _, dimension in ipairs({ "width", "height" }) do
+			local value = config.ui.panes[pane][dimension]
+
+			if value ~= nil then
+				assert(
+					type(value) == "number" and value >= 1 and value == math.floor(value),
+					"ui.panes." .. pane .. "." .. dimension .. " must be a positive integer"
+				)
+			end
+		end
+
 		for _, option in ipairs({ "number", "relativenumber" }) do
 			assert(
 				type(config.ui.panes[pane][option]) == "boolean",

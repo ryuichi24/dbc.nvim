@@ -61,8 +61,24 @@ end
 local function layout(state)
 	local width = math.max(3, vim.o.columns - 4)
 	local height = math.max(3, vim.o.lines - vim.o.cmdheight - 4)
-	local sidebar = math.min(state.config.ui.sidebar_width, math.max(1, math.floor(width / 3)))
-	local results = math.min(state.config.ui.results_height, math.max(1, math.floor((height - 1) / 2)))
+	local panes = state.config.ui.panes
+	local right_width = panes.query.width or panes.results.width
+	local sidebar_width = panes.sidebar.width or (right_width and width - right_width - 1)
+	local results_height = panes.query.height and height - panes.query.height - 1 or panes.results.height
+	local sidebar = math.min(
+		state.sidebar_width
+			or sidebar_width
+			or math.min(state.config.ui.sidebar_width, math.max(1, math.floor(width / 3))),
+		math.max(1, width - 2)
+	)
+	local results = math.min(
+		state.results_height
+			or results_height
+			or math.min(state.config.ui.results_height, math.max(1, math.floor((height - 1) / 2))),
+		math.max(1, height - 2)
+	)
+	sidebar = math.max(1, sidebar)
+	results = math.max(1, results)
 	local right = width - sidebar - 1
 	local query = height - results - 1
 	return {
@@ -70,6 +86,37 @@ local function layout(state)
 		query = { row = 1, col = sidebar + 3, width = right, height = query },
 		results = { row = query + 3, col = sidebar + 3, width = right, height = results },
 	}
+end
+
+local function resize(state, key)
+	local win = api.nvim_get_current_win()
+	local pane
+
+	for _, name in ipairs({ "sidebar", "query", "results" }) do
+		if win == state[name .. "_win"] then
+			pane = name
+		end
+	end
+
+	if state.disposed or not pane then
+		return
+	end
+
+	local geometry = layout(state)
+	local delta = ((key == "k" or key == "l") and 1 or -1) * state.config.ui.resize_step
+
+	if key == "h" or key == "l" then
+		state.sidebar_width = math.max(1, geometry.sidebar.width + (pane == "sidebar" and delta or -delta))
+	elseif pane ~= "sidebar" then
+		state.results_height = math.max(1, geometry.results.height + (pane == "results" and delta or -delta))
+	end
+
+	for name, config in pairs(layout(state)) do
+		if api.nvim_win_is_valid(state[name .. "_win"]) then
+			config.relative = "editor"
+			api.nvim_win_set_config(state[name .. "_win"], config)
+		end
+	end
 end
 
 local function query_header(state)
@@ -164,8 +211,17 @@ local function navigation(state, buf)
 			move(key)
 		end
 
-		vim.keymap.set("n", "<C-w>" .. key, callback, { buffer = buf, desc = "Navigate dbc panes" })
-		vim.keymap.set("n", "<C-w><C-" .. key .. ">", callback, { buffer = buf, desc = "Navigate dbc panes" })
+		local directional = key ~= "w" and key ~= "p"
+		local window_callback = directional
+				and function()
+					require("dbc.resize").start(key, function(direction)
+						resize(state, direction)
+					end)
+				end
+			or callback
+		local description = directional and "Resize dbc pane" or "Navigate dbc panes"
+		vim.keymap.set("n", "<C-w>" .. key, window_callback, { buffer = buf, desc = description })
+		vim.keymap.set("n", "<C-w><C-" .. key .. ">", window_callback, { buffer = buf, desc = description })
 
 		if key ~= "w" then
 			vim.keymap.set("n", "<C-" .. key .. ">", callback, { buffer = buf, desc = "Navigate dbc panes" })
@@ -1009,6 +1065,7 @@ local function dispose(state)
 
 	save_queries(state)
 	state.disposed = true
+	require("dbc.resize").stop()
 
 	for job in pairs(state.action_jobs) do
 		job.cancel()
