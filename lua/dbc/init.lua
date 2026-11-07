@@ -43,16 +43,8 @@ function M.setup(opts)
 		end
 	end
 
-	local names = {}
-
-	for _, profile in ipairs(config.connections) do
-		assert(type(profile.name) == "string" and profile.name ~= "", "Connection requires a name")
-		assert(not names[profile.name], "Connection names must be unique: " .. profile.name)
-		names[profile.name] = true
-		require("dbc.adapters").get(profile)
-		require("dbc.providers").validate(profile)
-		assert(not profile.password, "Use client-native authentication or a connection provider instead of a password")
-	end
+	require("dbc.connection_store").path(config)
+	require("dbc.connection_store").validate(config.connections)
 
 	M.config = config
 end
@@ -77,10 +69,18 @@ function M.command(args)
 		M.open()
 	elseif action == "run" then
 		M.run(args.range > 0 and args.line1 or nil, args.range > 0 and args.line2 or nil)
+	elseif action == "update" then
+		workspace.update(args.range > 0 and args.line1 or nil, args.range > 0 and args.line2 or nil)
+	elseif action == "edit_connections" then
+		local store = require("dbc.connection_store")
+		store.ensure(M.config)
+		vim.cmd("tabedit " .. vim.fn.fnameescape(store.path(M.config)))
 	elseif
 		workspace[action]
 		and vim.tbl_contains({
 			"connect",
+			"add_connection",
+			"reload_connections",
 			"query",
 			"next_query",
 			"previous_query",

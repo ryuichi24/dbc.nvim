@@ -32,11 +32,7 @@ function M.new(limits)
 		end
 
 		entry.closed = true
-
-		if manager.entries[entry.name] == entry then
-			manager.entries[entry.name] = nil
-		end
-
+		manager.entries[entry] = nil
 		safely(entry.cancel_connect)
 
 		if entry.session and type(entry.session.close) == "function" then
@@ -131,7 +127,12 @@ function M.new(limits)
 				return
 			end
 
-			entry = self.entries[profile.name]
+			for _, candidate in pairs(self.entries) do
+				if vim.deep_equal(candidate.profile, profile) then
+					entry = candidate
+					break
+				end
+			end
 
 			if entry then
 				entry.waiters[operation] = resolve
@@ -143,7 +144,7 @@ function M.new(limits)
 				return
 			end
 
-			entry = { name = profile.name, waiters = { [operation] = resolve } }
+			entry = { name = profile.name, profile = vim.deepcopy(profile), waiters = { [operation] = resolve } }
 			local ok, session = pcall(function()
 				local provider = require("dbc.providers").get(profile)
 				local instance = provider.create(vim.deepcopy(profile), context)
@@ -163,7 +164,7 @@ function M.new(limits)
 				return
 			end
 
-			self.entries[profile.name] = entry
+			self.entries[entry] = entry
 			local connected = false
 			local opened, cancel = pcall(session.connect, function(err)
 				vim.schedule(function()

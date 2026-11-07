@@ -255,7 +255,7 @@ local function render_results(state, result, binding)
 					end
 
 					table.insert(lines, "| " .. table.concat(cells, " | ") .. " |")
-					state.cells[#lines] = { values = row, starts = starts }
+					state.cells[#lines] = { values = row, starts = starts, columns = set.columns }
 					remaining = remaining - 1
 				end
 			end
@@ -274,10 +274,10 @@ local function render_results(state, result, binding)
 	local cells = {}
 
 	for row, cell in pairs(state.cells) do
-		table.insert(cells, { row = row, values = cell.values, starts = cell.starts })
+		table.insert(cells, { row = row, values = cell.values, starts = cell.starts, columns = cell.columns })
 	end
 
-	state.snapshot = { lines = lines, cells = cells }
+	state.snapshot = { lines = lines, cells = cells, source = state.source, binding = binding }
 	write(state.results, lines)
 end
 
@@ -372,7 +372,11 @@ local function load_node(state, node, on_complete)
 end
 
 render_tree = function(state)
-	local lines = { "Enter: select DB / expand", "a: default · u: update · A: actions · n: query · p: preview", "" }
+	local lines = {
+		"a: add connection/table/record · d: remove connection · Enter: DB",
+		"ga: default · u: update · A: actions · n: query · p: preview",
+		"",
+	}
 	state.nodes = {}
 	local selected = api.nvim_win_is_valid(state.sidebar_win) and api.nvim_win_get_cursor(state.sidebar_win)[1] or 1
 	local selected_node = state.previous_nodes and state.previous_nodes[selected]
@@ -500,15 +504,13 @@ end
 function M.close_query()
 	local state = require_workspace()
 
+	if #state.queries <= 1 then
+		return
+	end
+
 	for index, tab in ipairs(state.queries) do
 		if tab.buf == state.query then
 			table.remove(state.queries, index)
-
-			if #state.queries == 0 then
-				M.query()
-				return
-			end
-
 			activate_query(state, state.queries[math.min(index, #state.queries)])
 			return
 		end
@@ -691,6 +693,11 @@ end
 
 function M.action(id)
 	local state = require_workspace()
+
+	if id == "update" and api.nvim_get_current_buf() == state.results then
+		return M.update()
+	end
+
 	local ctx = action_context(state)
 
 	if not ctx then
@@ -718,6 +725,32 @@ function M.action(id)
 	end
 end
 
+function M.update(first, last)
+	local state = require_workspace()
+	assert(api.nvim_get_current_buf() == state.results, "Select a row in the results pane")
+	local line = first or api.nvim_win_get_cursor(0)[1]
+	assert(not last or last == line, "Select exactly one result row")
+	local row = state.cells and state.cells[line]
+	assert(row and row.columns, "Select a result data row; rerun older saved results first")
+	local snapshot
+
+	for _, tab in ipairs(state.queries) do
+		if tab.results == state.results then
+			snapshot = tab.snapshot
+		end
+	end
+
+	assert(snapshot and snapshot.source and snapshot.binding, "Rerun this query before updating a row")
+	local ctx = actions.context(require("dbc.row_update").source(snapshot.source, snapshot.binding))
+	run_action(state, {
+		id = "update",
+		requires = { "columns" },
+		generate = function(context)
+			return require("dbc.row_update").generate(context, row)
+		end,
+	}, ctx)
+end
+
 function M.add_query()
 	M.action()
 end
@@ -737,6 +770,119 @@ function M.actions()
 	else
 		vim.notify("dbc actions: " .. tostring(choices), vim.log.levels.ERROR)
 	end
+end
+
+function M.reload_connections()
+	local state = require_workspace()
+	local config = require("dbc.connection_store").resolve(state.connection_config)
+	local roots = {}
+
+	for _, profile in ipairs(config.connections) do
+		local root = { name = profile.name, kind = "connection", profile = profile }
+
+		for _, existing in ipairs(state.roots) do
+			if vim.deep_equal(existing.profile, profile) then
+				root = existing
+				break
+			end
+		end
+
+		table.insert(roots, root)
+	end
+
+	state.config.connections = config.connections
+	state.roots = roots
+	render_tree(state)
+end
+
+function M.add_connection()
+	local state = require_workspace()
+	return require("dbc.connection_form").open(function(profile)
+		if current ~= state or state.disposed then
+			return false
+		end
+
+		local ok, err = pcall(function()
+			require("dbc.connection_store").add(state.connection_config, profile)
+			M.reload_connections()
+			M.query({ profile = profile, database = profile.database })
+		end)
+
+		if not ok then
+			vim.notify("dbc: " .. tostring(err), vim.log.levels.ERROR)
+		end
+
+		return ok
+	end)
+end
+
+function M.remove_connection()
+	local state = require_workspace()
+	local node = selected_node(state)
+
+	if not node or node.kind ~= "connection" then
+		vim.notify("dbc: select a connection row to remove it", vim.log.levels.INFO)
+		return
+	end
+
+	for _, profile in ipairs(state.connection_config.connections or {}) do
+		if profile.name == node.profile.name then
+			vim.notify("dbc: remove this connection from setup().connections in your Lua config", vim.log.levels.INFO)
+			return
+		end
+	end
+
+	local profile = vim.deepcopy(node.profile)
+	return require("dbc.connection_confirm").open(profile.name, function()
+		if current ~= state or state.disposed then
+			return
+		end
+
+		local ok, err = pcall(function()
+			require("dbc.connection_store").remove(state.connection_config, profile)
+			local removed = {}
+
+			if state.binding and state.binding.profile.name == profile.name then
+				state.binding = nil
+			end
+
+			for buf, binding in pairs(state.bindings) do
+				if binding.profile.name == profile.name then
+					removed[buf] = true
+					if state.running_query == buf and state.cancel then
+						state.execution = state.execution + 1
+						state.cancel()
+						state.cancel = nil
+						state.running_query = nil
+					end
+
+					state.bindings[buf] = nil
+				end
+			end
+
+			for index = #state.queries, 1, -1 do
+				local tab = state.queries[index]
+
+				if removed[tab.buf] then
+					table.remove(state.queries, index)
+				end
+			end
+
+			if #state.queries == 0 then
+				M.query()
+			elseif removed[state.query] then
+				activate_query(state, state.queries[1])
+			else
+				save_queries(state)
+			end
+
+			M.reload_connections()
+		end)
+
+		if not ok then
+			vim.notify("dbc: " .. tostring(err), vim.log.levels.ERROR)
+		end
+	end)
 end
 
 function M.connect()
@@ -824,12 +970,15 @@ function M.run(first, last)
 	end
 
 	assert(target, "Reopen this query in a query tab before running")
+	target.source = sql
 	target.cells = nil
 	state.cells = nil
 	write(target.results, { "Running · " .. binding.profile.name .. " / " .. (binding.database or "(default)") })
+	state.running_query = buf
 	state.cancel = execute(state, binding, sql, function(result)
 		if current == state and state.execution == id then
 			state.cancel = nil
+			state.running_query = nil
 			render_results(target, result, binding)
 			save_queries(state)
 
@@ -917,17 +1066,23 @@ function M.open(config)
 	assert(vim.fn.has("nvim-0.10") == 1, "dbc requires Neovim 0.10+")
 
 	if current and api.nvim_tabpage_is_valid(current.tab) then
+		M.reload_connections()
 		focus(current, "results")
 		focus(current, "sidebar")
 		focus(current, "query")
 		return current
 	end
 
+	local store = require("dbc.connection_store")
+	local connection_config = vim.deepcopy(config)
+	connection_config.connections_file = store.path(config)
+	config = store.resolve(connection_config)
 	serial = serial + 1
 	local state = {
 		storage = vim.fn.stdpath("data") .. "/dbc/queries-" .. vim.fn.sha256(vim.fn.getcwd()) .. ".json",
 		restoring = true,
 		config = vim.deepcopy(config),
+		connection_config = vim.deepcopy(connection_config),
 		runner = require("dbc.execution").new(config.execution),
 		tab = api.nvim_get_current_tabpage(),
 		previous_win = api.nvim_get_current_win(),
@@ -1000,7 +1155,7 @@ function M.open(config)
 			vim.notify("dbc: select a database, then press n to create a query", vim.log.levels.INFO)
 		end
 	end)
-	map("a", M.add_query)
+	map("ga", M.add_query)
 	map("u", function()
 		M.action("update")
 	end)
@@ -1013,8 +1168,27 @@ function M.open(config)
 	end)
 	map("R", M.refresh)
 	map("c", M.connect)
+	map("a", function()
+		local node = selected_node(state)
+
+		if not node or node.kind == "connection" then
+			return M.add_connection()
+		elseif node.kind == "database" or node.kind == "schema" then
+			M.action("create_table")
+		elseif node.kind == "table" then
+			M.action("insert")
+		end
+	end)
+	map("d", M.remove_connection)
 	map("q", M.close)
 	state.configure_results = function(buf)
+		vim.keymap.set("n", "u", M.update, { buffer = buf, desc = "Open UPDATE for result row" })
+		vim.keymap.set(
+			"x",
+			"u",
+			":Dbc update<CR>",
+			{ buffer = buf, silent = true, desc = "Open UPDATE for selected row" }
+		)
 		vim.keymap.set("n", "q", function()
 			vim.cmd("close")
 		end, { buffer = buf })
@@ -1146,7 +1320,7 @@ function M.open(config)
 				tab.cells = {}
 
 				for _, cell in ipairs(query.snapshot.cells) do
-					tab.cells[cell.row] = { values = cell.values, starts = cell.starts }
+					tab.cells[cell.row] = { values = cell.values, starts = cell.starts, columns = cell.columns }
 				end
 
 				write(tab.results, query.snapshot.lines)
@@ -1172,7 +1346,7 @@ function M.open(config)
 		M.query()
 	else
 		M.query()
-		vim.notify("dbc: configure connections with require('dbc').setup()", vim.log.levels.INFO)
+		vim.notify("dbc: press a in the sidebar or use :Dbc add_connection to add a connection", vim.log.levels.INFO)
 	end
 	state.restoring = false
 	save_queries(state)

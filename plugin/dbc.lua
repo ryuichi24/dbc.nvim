@@ -18,6 +18,9 @@ end, {
 		return {
 			"open",
 			"connect",
+			"add_connection",
+			"edit_connections",
+			"reload_connections",
 			"query",
 			"next_query",
 			"previous_query",
@@ -25,6 +28,7 @@ end, {
 			"close_query",
 			"actions",
 			"run",
+			"update",
 			"cancel",
 			"refresh",
 			"close",

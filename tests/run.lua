@@ -6,6 +6,8 @@ local data_home = vim.fn.tempname()
 vim.env.XDG_DATA_HOME = data_home
 local ok, err = xpcall(function()
 	local adapters = require("dbc.adapters")
+	dofile("tests/sqlite.lua")
+	dofile("tests/row_update.lua")
 	local postgres = adapters.get({ adapter = "postgres" })
 	local csv = 'a,a,empty,value\r\n"one,two",NULL_MARKER,"","line 1\nline ""2"""\r\n'
 	local pg_sets = postgres.decode(csv, "NULL_MARKER")
@@ -187,6 +189,13 @@ local ok, err = xpcall(function()
 	workspace.close_query()
 
 	assert(state.query == query and state.results == running_results)
+
+	local serial = state.query_serial
+	workspace.close_query()
+
+	assert(#state.queries == 1 and state.query == query and state.results == running_results)
+	assert(state.query_serial == serial, "Closing the last query must not create a replacement")
+	assert(vim.api.nvim_buf_get_lines(query, 0, 1, false)[1] == "FAIL")
 
 	local saved = vim.json.decode(table.concat(vim.fn.readfile(state.storage), "\n"))
 
@@ -481,6 +490,7 @@ local ok, err = xpcall(function()
 	vim.fn.delete(state.storage)
 	require("tests.providers").run()
 	require("tests.aws_provider").run()
+	require("tests.connection_store").run()
 end, debug.traceback)
 vim.fn.delete(temporary)
 vim.fn.delete(pg_temporary)

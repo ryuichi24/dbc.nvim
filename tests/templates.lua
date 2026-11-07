@@ -109,7 +109,7 @@ function M.run()
 
 	local function add(node, key)
 		select(node)
-		key = key or "a"
+		key = key or "ga"
 		local mapping = vim.fn.maparg(key, "n", false, true)
 
 		assert(mapping.buffer == 1, key .. " must be sidebar-local")
@@ -164,7 +164,7 @@ function M.run()
 	local database = state.roots[1].children[1]
 	local count = #state.queries
 	local metadata_count = #calls
-	add(database)
+	add(database, "a")
 
 	assert(#state.queries == count + 1)
 	assert(state.query ~= original and vim.api.nvim_get_current_win() == state.query_win)
@@ -181,7 +181,7 @@ function M.run()
 	read_query(relation, "SELECT * FROM `ta``ble` LIMIT 100;")
 	metadata_count = #calls
 	count = #state.queries
-	add(relation)
+	add(relation, "a")
 	wait()
 
 	assert(#state.queries == count + 1 and #calls == metadata_count + 1)

@@ -144,7 +144,7 @@ function M.run()
 		assert(actions.default(ctx).id == preferred.id)
 
 		select(relation)
-		vim.fn.maparg("a", "n", false, true).callback()
+		vim.fn.maparg("ga", "n", false, true).callback()
 		wait()
 
 		assert(text():find("UPDATE", 1, true) == 1)
