@@ -140,6 +140,8 @@ function M.children(node, sets)
 		table.insert(children, {
 			name = row[1],
 			kind = kind,
+			primary_key = kind == "column" and row[4] == "PRI" or nil,
+			generated = kind == "column" and row[6] and row[6]:match("GENERATED") ~= nil or nil,
 			database = node.kind == "connection" and row[1] or node.database,
 			detail = kind == "column" and (row[2] .. (row[4] and row[4] ~= "" and " " .. row[4] or ""))
 				or (row[2] == "VIEW" and "view" or nil),

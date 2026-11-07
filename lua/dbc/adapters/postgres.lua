@@ -9,7 +9,8 @@ local function literal(value)
 end
 
 -- Parse CSV records, not lines: quoted fields can contain CR/LF and commas.
-function M.decode(text, null)
+function M.decode(text, null, dialect)
+	dialect = dialect or "PostgreSQL"
 	if text == "" then
 		return {}
 	end
@@ -24,7 +25,7 @@ function M.decode(text, null)
 			position = position + 1
 
 			while true do
-				local ending = assert(text:find('"', position, true), "Unterminated PostgreSQL CSV field")
+				local ending = assert(text:find('"', position, true), "Unterminated " .. dialect .. " CSV field")
 				table.insert(parts, text:sub(position, ending - 1))
 				position = ending + 1
 
@@ -40,7 +41,7 @@ function M.decode(text, null)
 		else
 			local ending = text:find("[,\r\n]", position) or (#text + 1)
 			value = text:sub(position, ending - 1)
-			assert(not value:find('"', 1, true), "Unexpected quote in PostgreSQL CSV")
+			assert(not value:find('"', 1, true), "Unexpected quote in " .. dialect .. " CSV")
 			position = ending
 		end
 
@@ -65,7 +66,10 @@ function M.decode(text, null)
 	local columns = table.remove(records, 1)
 
 	for _, values in ipairs(records) do
-		assert(#values == #columns, "Unexpected PostgreSQL CSV width; execute one result-producing statement at a time")
+		assert(
+			#values == #columns,
+			"Unexpected " .. dialect .. " CSV width; execute one result-producing statement at a time"
+		)
 
 		for index, value in ipairs(values) do
 			if value == null then
@@ -134,7 +138,7 @@ function M.metadata(node)
 			.. literal(node.schema)
 			.. " AND c.relkind IN ('r', 'p', 'v', 'm', 'f') ORDER BY c.relname"
 	elseif node.kind == "table" then
-		return "SELECT a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = "
+		return "SELECT a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod), EXISTS (SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid = c.oid AND i.indisprimary AND a.attnum = ANY(i.indkey)), a.attgenerated FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = "
 			.. literal(node.schema)
 			.. " AND c.relname = "
 			.. literal(node.name)
@@ -150,6 +154,8 @@ function M.children(node, sets)
 		table.insert(children, {
 			name = row[1],
 			kind = kind,
+			primary_key = kind == "column" and row[3] == "t" or nil,
+			generated = kind == "column" and row[4] ~= nil and row[4] ~= "" or nil,
 			database = node.kind == "connection" and row[1] or node.database,
 			schema = node.kind == "database" and row[1] or node.schema,
 			detail = kind == "column" and row[2]

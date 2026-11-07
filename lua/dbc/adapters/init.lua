@@ -1,6 +1,6 @@
 local M = {}
 local registered = {}
-local builtins = { mysql = "dbc.adapters.mysql", postgres = "dbc.adapters.postgres" }
+local builtins = { mysql = "dbc.adapters.mysql", postgres = "dbc.adapters.postgres", sqlite = "dbc.adapters.sqlite" }
 local required = { "request", "metadata", "children", "preview" }
 
 function M.register(name, adapter)
