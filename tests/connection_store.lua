@@ -244,6 +244,41 @@ function M.run()
 			assert(profile[adapter == "mysql" and "login_path" or "service"] == "native-auth")
 		end
 
+		-- Credential setup must finish successfully before the profile is saved.
+		local editor = directory .. "/mysql_config_editor"
+		vim.fn.writefile({ "#!/bin/sh", "exit 1" }, editor)
+		vim.fn.setfperm(editor, "rwx------")
+		local credential_profile
+		form = require("dbc.connection_form").open(function(profile)
+			credential_profile = profile
+		end)
+		edit(form, {
+			name = "credentials",
+			adapter = "mysql",
+			host = "127.0.0.1",
+			port = "33062",
+			user = "dev",
+			executable = directory .. "/mysql",
+			save_password = "yes",
+		})
+		submit(form)
+
+		assert(vim.wait(2000, function()
+			return notices[#notices]:find("credential setup failed", 1, true) ~= nil
+		end))
+		assert(not credential_profile and vim.api.nvim_buf_is_valid(form.buf))
+
+		vim.cmd.stopinsert()
+		vim.cmd("bwipeout!")
+		vim.fn.writefile({ "#!/bin/sh", 'test "$2" = "--login-path=credentials"' }, editor)
+		submit(form)
+
+		assert(vim.wait(2000, function()
+			return credential_profile ~= nil
+		end))
+		assert(credential_profile.login_path == "credentials" and credential_profile.save_password == nil)
+		assert(not vim.api.nvim_buf_is_valid(form.buf))
+
 		local submitted
 		form = require("dbc.connection_form").open(function(profile)
 			submitted = profile

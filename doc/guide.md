@@ -70,6 +70,18 @@ the file and any Lua-configured connections. Use client-native authentication
 or providers rather than storing a `password` field. The connection form covers
 direct SQLite/MySQL/PostgreSQL connections; edit the file for advanced options.
 
+For MySQL, set `save_password: yes` in the form to run `mysql_config_editor`
+inside a terminal pane before saving the connection. Enter the password at its
+prompt, not in the form. A blank `login_path` defaults to the connection name;
+an existing login path may prompt for confirmation before being overwritten.
+Credentials are stored by MySQL, not in the connection JSON. Leave
+`save_password` blank or set it to `no` to use existing authentication unchanged.
+The editor is found beside an explicit `executable`, or on PATH otherwise.
+If credential setup fails, the form stays open and the connection is not added.
+MySQL profiles with an explicit port use TCP unless a socket or protocol is
+explicitly configured, so Docker connections can use `host: 127.0.0.1` and the
+published host port.
+
 Lua-configured connections remain supported and appear alongside JSON entries:
 
 ```lua

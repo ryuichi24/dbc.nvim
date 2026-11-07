@@ -1,7 +1,8 @@
 local M = {}
 local api = vim.api
 local namespace = api.nvim_create_namespace("dbc.connection_form")
-local fields = { "name", "adapter", "database", "host", "port", "user", "login_path", "service", "executable" }
+local fields =
+	{ "name", "adapter", "database", "host", "port", "user", "login_path", "service", "executable", "save_password" }
 
 local function parse(lines)
 	local profile, seen = {}, {}
@@ -33,13 +34,58 @@ local function parse(lines)
 		profile.port = port
 	end
 
+	local save_password = profile.save_password
+	assert(not save_password or save_password == "yes" or save_password == "no", "save_password must be yes or no")
+	profile.save_password = nil
+
+	if save_password == "yes" then
+		assert(profile.adapter == "mysql", "save_password is only supported for MySQL")
+		profile.login_path = profile.login_path or profile.name
+	end
+
 	require("dbc.connection_store").validate({ profile })
 
 	if profile.adapter == "sqlite" and profile.database ~= ":memory:" and not profile.database:match("^file:") then
 		profile.database = vim.fn.fnamemodify(vim.fn.expand(profile.database), ":p")
 	end
 
-	return profile
+	return profile, save_password == "yes"
+end
+
+local function save_mysql_password(profile, done)
+	local editor = "mysql_config_editor"
+
+	if profile.executable then
+		editor = vim.fn.fnamemodify(profile.executable, ":p:h") .. "/mysql_config_editor"
+	end
+
+	assert(vim.fn.executable(editor) == 1, "mysql_config_editor not found: " .. editor)
+	local argv = { editor, "set", "--login-path=" .. profile.login_path }
+
+	for _, key in ipairs({ "host", "port", "user" }) do
+		if profile[key] then
+			table.insert(argv, "--" .. key .. "=" .. tostring(profile[key]))
+		end
+	end
+
+	table.insert(argv, "--password")
+	vim.cmd("botright new")
+	local buf = api.nvim_get_current_buf()
+	vim.bo[buf].bufhidden = "wipe"
+	local job = vim.fn.jobstart(argv, {
+		term = true,
+		on_exit = function(_, code)
+			vim.schedule(function()
+				if code == 0 and api.nvim_buf_is_valid(buf) then
+					api.nvim_buf_delete(buf, { force = true })
+				end
+
+				done(code == 0)
+			end)
+		end,
+	})
+	assert(job > 0, "Could not start mysql_config_editor")
+	vim.cmd.startinsert()
 end
 
 function M.open(done)
@@ -50,6 +96,7 @@ function M.open(done)
 		"# adapter: sqlite / mysql / postgres",
 		"# SQLite: database is a file path. MySQL: login_path.",
 		"# PostgreSQL: service. Authentication is client-native.",
+		"# MySQL: save_password: yes opens a secure credential prompt.",
 		"",
 	}
 
@@ -75,7 +122,7 @@ function M.open(done)
 		col = math.max(0, math.floor((vim.o.columns - width - 2) / 2)),
 	})
 	vim.wo[win].wrap = false
-	api.nvim_win_set_cursor(win, { 7, 6 })
+	api.nvim_win_set_cursor(win, { 8, 6 })
 	local function close()
 		if api.nvim_win_is_valid(win) then
 			api.nvim_win_close(win, true)
@@ -107,7 +154,7 @@ function M.open(done)
 			return
 		end
 
-		local ok, profile = pcall(parse, api.nvim_buf_get_lines(buf, 0, -1, false))
+		local ok, profile, save_password = pcall(parse, api.nvim_buf_get_lines(buf, 0, -1, false))
 
 		if not ok then
 			vim.notify("dbc: " .. tostring(profile), vim.log.levels.ERROR)
@@ -115,13 +162,37 @@ function M.open(done)
 		end
 
 		submitting = true
-		local saved, result = pcall(done, profile)
-		submitting = false
+		local function finish()
+			if not api.nvim_buf_is_valid(buf) then
+				return
+			end
 
-		if not saved then
-			vim.notify("dbc: " .. tostring(result), vim.log.levels.ERROR)
-		elseif result ~= false then
-			close()
+			local saved, result = pcall(done, profile)
+			submitting = false
+
+			if not saved then
+				vim.notify("dbc: " .. tostring(result), vim.log.levels.ERROR)
+			elseif result ~= false then
+				close()
+			end
+		end
+
+		if save_password then
+			local started, err = pcall(save_mysql_password, profile, function(saved)
+				if saved then
+					finish()
+				else
+					submitting = false
+					vim.notify("dbc: MySQL credential setup failed; connection was not added", vim.log.levels.ERROR)
+				end
+			end)
+
+			if not started then
+				submitting = false
+				vim.notify("dbc: " .. tostring(err), vim.log.levels.ERROR)
+			end
+		else
+			finish()
 		end
 	end
 
