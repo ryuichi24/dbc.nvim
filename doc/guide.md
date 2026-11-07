@@ -176,7 +176,7 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
    not alter `search_path`. PostgreSQL previews use schema-qualified names.
 3. On a table or view, `r` opens a new read query tab with `SELECT * ... LIMIT 100`
    (`p` is also supported).
-   Review it and execute explicitly; previews do not run automatically.
+   Review it and execute explicitly, or press `R` on a table/view to open and run the preview immediately.
     Press `a` on a database/schema to create a table, or on a table to insert a record.
     Press `ga` on a connection/profile for a `CREATE DATABASE` template,
    or on a database to open a new query tab with a `CREATE TABLE` template,
@@ -212,12 +212,12 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
 | `:Dbc actions` | Pick a query-generation action for the selected sidebar item (`A`) |
 | `:[range]Dbc run` | Run buffer or supplied line range |
 | `:Dbc cancel` | Stop active query (`<localleader>c` in editor) |
-| `:Dbc refresh` | Reload selected sidebar subtree (`R` in sidebar) |
+| `:Dbc refresh` | Reload selected sidebar subtree (`R` on non-table/view nodes) |
 | `:Dbc close` | Close dashboard without force-deleting queries |
 
 Sidebar `c` selects a connection; `q` closes the dashboard. Result `q` closes
 its window. Successful CREATE/ALTER/DROP/RENAME queries automatically refresh
-expanded table lists for the bound database; use `R` for a manual refresh.
+expanded table lists for the bound database; use `:Dbc refresh` for a manual refresh.
 The query header displays numbered tabs with the active tab highlighted. Use
 `<localleader>t` to create a tab using the current tab's database and
 `<localleader>x` to close a tab (at least one stays open). Each tab keeps its SQL,
@@ -332,6 +332,7 @@ prefill it, and INSERT templates qualify the table with its schema.
 Generators are registered modules. Sidebar `ga` uses the contextual default;
 `A` opens a picker containing all applicable actions, including your extensions.
 `r` (or `p`) invokes the registered SELECT preview action.
+`R` on a table/view opens the same query and executes it immediately.
 
 ```lua
 require("dbc.actions").register({

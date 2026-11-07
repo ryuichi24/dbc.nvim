@@ -406,6 +406,23 @@ local ok, err = xpcall(function()
 	assert(vim.api.nvim_get_current_line() == 'SELECT * FROM "public"."users" LIMIT 100;')
 	assert(state.bindings[state.query].database == "app")
 
+	vim.api.nvim_set_current_win(state.sidebar_win)
+	local run_preview_mapping = vim.fn.maparg("R", "n", false, true)
+	local previous_query = state.query
+	local previous_execution = state.execution
+	run_preview_mapping.callback()
+
+	assert(vim.wait(3000, function()
+		return state.execution > previous_execution and state.cancel == nil and not next(state.action_jobs)
+	end))
+	assert(state.query ~= previous_query)
+	assert(vim.api.nvim_buf_get_lines(state.query, 0, 1, false)[1] == 'SELECT * FROM "public"."users" LIMIT 100;')
+	assert(state.bindings[state.query].database == "app")
+
+	workspace.close_query()
+
+	assert(state.query == previous_query)
+
 	-- Changing the default connection must not retarget an existing query.
 	state.binding = { profile = state.config.connections[2], database = "test" }
 

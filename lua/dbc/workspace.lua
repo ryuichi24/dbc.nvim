@@ -651,7 +651,7 @@ function M.query(binding, text)
 	return buf
 end
 
-local function run_action(state, action, ctx)
+local function run_action(state, action, ctx, execute)
 	if current ~= state or state.disposed then
 		return
 	end
@@ -696,6 +696,10 @@ local function run_action(state, action, ctx)
 		end
 
 		local buf = M.query({ profile = ctx.profile, database = ctx.database }, result.sql)
+
+		if execute then
+			M.run()
+		end
 
 		if result.cursor then
 			api.nvim_win_set_cursor(state.query_win, result.cursor)
@@ -747,7 +751,7 @@ local function choose_action(state, ctx, choices)
 	end)
 end
 
-function M.action(id)
+function M.action(id, execute)
 	local state = require_workspace()
 
 	if id == "update" and api.nvim_get_current_buf() == state.results then
@@ -769,7 +773,7 @@ function M.action(id)
 
 	for _, action in ipairs(choices) do
 		if (id and action.id == id) or (not id and action.default) then
-			run_action(state, action, ctx)
+			run_action(state, action, ctx, execute)
 			return
 		end
 	end
@@ -1223,7 +1227,15 @@ function M.open(config)
 	map("p", function()
 		M.action("preview")
 	end)
-	map("R", M.refresh)
+	map("R", function()
+		local node = selected_node(state)
+
+		if node and (node.kind == "table" or node.kind == "view") then
+			M.action("preview", true)
+		else
+			M.refresh()
+		end
+	end)
 	map("c", M.connect)
 	map("a", function()
 		local node = selected_node(state)

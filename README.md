@@ -54,7 +54,7 @@ authentication, connection files, UI options, and execution limits.
 | `gt` / `gT` / `3gt`                 | Next / previous / numbered query tab |
 | `:Dbc pick_query`                   | Search open query tabs               |
 | `<localleader>c` / `:Dbc cancel`    | Stop the active query                |
-| `R` in sidebar                      | Refresh the selected subtree         |
+| `R` in sidebar                      | Open and run SELECT on a table/view; otherwise refresh subtree |
 | `:Dbc close`                        | Close the workspace                  |
 
 Query tabs and their last results are saved per working directory and restored

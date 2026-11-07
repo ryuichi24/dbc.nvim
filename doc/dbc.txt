@@ -46,7 +46,7 @@ Sidebar: Enter expand/collapse and bind current query on a database/schema;
            INSERT template on table;
          A pick any applicable registered query action;
           n new query for database under cursor; r read query (also p);
-          R refresh; c connect;
+          R open and run SELECT on table/view, otherwise refresh; c connect;
          q close. The bound database is marked [query].
 Sidebar u opens an UPDATE template on a table, with column assignments and a
 WHERE <condition> placeholder.

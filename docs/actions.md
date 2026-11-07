@@ -19,6 +19,7 @@ Sidebar ga / A / r / p or require("dbc").action(id)
   If no default applies, open the action picker.
 - `A` or `:Dbc actions`: choose from applicable built-in and registered actions.
 - `r` (or `p`): open a read query using the `preview` action directly.
+- `R` on a table/view: open the same read query and execute it immediately.
 - `require("dbc").action("my_plugin.update")`: run a named action on the selected
   sidebar node, for example from a custom mapping.
 
