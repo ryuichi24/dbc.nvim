@@ -66,6 +66,10 @@ local ok, err = xpcall(function()
 	assert(argv[2] == "--defaults-extra-file=/a b")
 	assert(argv[#argv] == "--database=a; b")
 
+	assert(vim.tbl_contains(mysql.argv({ host = "localhost", port = 33062 }), "--protocol=TCP"))
+	assert(not vim.tbl_contains(mysql.argv({ socket = "/tmp/mysql.sock", port = 33062 }), "--protocol=TCP"))
+	assert(not vim.tbl_contains(mysql.argv({ protocol = "SOCKET", port = 33062 }), "--protocol=TCP"))
+
 	-- A deterministic executable exercises real pipes without needing a database.
 	vim.fn.writefile({
 		"#!/bin/sh",

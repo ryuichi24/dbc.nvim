@@ -32,6 +32,10 @@ function M.argv(profile, database)
 		end
 	end
 
+	if profile.port and not profile.protocol and not profile.socket then
+		table.insert(args, "--protocol=TCP")
+	end
+
 	if profile.enable_cleartext_plugin then
 		table.insert(args, "--enable-cleartext-plugin")
 	end
