@@ -1,12 +1,32 @@
 *dbc.txt* Native-buffer database workspace
 
-dbc requires Neovim 0.10+ and an installed mysql or psql CLI. Configure connections via
+dbc requires Neovim 0.10+ and an installed mysql, psql, or sqlite3 CLI.
+Configure connections via
 require('dbc').setup({ connections = { { name = 'dev', login_path = 'dev' } } }).
 See README.md in the plugin directory for configuration and limitations.
+
+Connections are also loaded from stdpath('data')/dbc/connections.json, a JSON
+array of connection objects with the same fields as Lua profiles. Override its
+path with setup({ connections_file = '/path/to/connections.json' }). Lua and JSON
+connections appear together; names must be unique. Do not store passwords.
+Press a in the sidebar to open an editable connection form buffer. Edit its
+field: value lines, then press Enter on Add to save it to JSON.
+Blank optional fields are omitted. q cancels in normal mode. Errors leave your
+edits intact so you can correct the form and submit it again.
+To remove a saved JSON connection, select its connection row and press d.
+The popup defaults to Cancel. Enter on Remove confirms; Enter on Cancel, q, or
+Escape cancels. Database data and existing query tabs are preserved. Connections
+defined in setup().connections must be removed from the Lua configuration.
+For manual changes, use :Dbc edit_connections, save the file, then :Dbc to return
+and reload, or :Dbc reload_connections in the dashboard. Existing query tabs keep
+their original connection settings; new queries use the reloaded profiles.
 
 COMMANDS                                                        *:Dbc*
 :Dbc [open]             Open/focus the dashboard tab.
 :Dbc connect            Select a connection; create a query.
+:Dbc add_connection     Open a connection form; Enter on Add saves it to JSON.
+:Dbc edit_connections   Open the JSON file in a separate tab for editing.
+:Dbc reload_connections Reload the JSON file without closing query tabs.
 :Dbc query              Create a query bound to the selected database.
 :Dbc next_query         Switch to the next query tab (gt).
 :Dbc previous_query     Switch to the previous query tab (gT).
@@ -20,7 +40,9 @@ COMMANDS                                                        *:Dbc*
 MAPPINGS                                                        *dbc-mappings*
 Editor: <localleader>r run; <localleader>c cancel (configurable).
 Sidebar: Enter expand/collapse and bind current query on a database/schema;
-         a CREATE DATABASE on connection/profile, CREATE TABLE on database/schema,
+         a add and save a connection;
+         d remove a saved connection after confirmation;
+         ga CREATE DATABASE on connection/profile, CREATE TABLE on database/schema,
            INSERT template on table;
          A pick any applicable registered query action;
           n new query for database under cursor; r read query (also p);
@@ -51,6 +73,11 @@ libpq environment defaults; configure adapter = 'postgres' and psql 12+.
 PostgreSQL browsing includes schemas; previews qualify table names. Selecting a
 schema does not alter search_path. Run one result-producing PostgreSQL statement
 at a time: CSV cannot frame multiple result sets. Do not use client metacommands.
+SQLite requires sqlite3 3.33+, adapter = 'sqlite', and database = '/path/to/app.db'.
+It browses the configured file's tables/views and columns. Run one result-producing
+statement per execution; CSV does not frame multiple results. Empty results may
+lack headers. Use hex(column) for binary values. Dot commands are unsupported.
+Each run opens a new session, including a new empty database for ':memory:'.
 
 ADAPTERS                                                        *dbc-adapters*
 require('dbc.adapters').register(name, adapter) registers an adapter before setup.
@@ -65,7 +92,7 @@ require('dbc.actions').register(action) adds a plugin-style SQL generator.
 Required fields: id, label, node_kinds, generate(ctx). Optional fields include
 requires (metadata), adapter_methods, capabilities, adapters, available, default,
 priority, and allow_missing_metadata. Built-ins use this same registry.
-Sidebar a selects the highest-priority default; A/:Dbc actions opens the picker.
+Sidebar ga selects the highest-priority default; A/:Dbc actions opens the picker.
 require('dbc').action(id) invokes a named action on the selected sidebar node.
 Metadata preparation and query-tab opening are handled by the workspace; SQL
 execution remains explicit. See docs/actions.md for the full extension contract.
@@ -89,3 +116,10 @@ Connection names must be unique. Tokens never become query-buffer state.
 See docs/providers.md for the lifecycle, cancellation, and RDS IAM design.
 
 vim:tw=78:ts=8:noet:ft=help:norl:
+RESULT ROW UPDATES
+
+In results, select one data row with V and press u, or use :Dbc update.
+A new query tab contains an UPDATE prefilled from the fetched row. Primary keys
+form WHERE; generated columns are omitted. Edit and execute the query manually.
+Supports SELECT * FROM table with optional LIMIT; PostgreSQL requires a schema
+qualifier. A primary key is required. Joins and expressions are unsupported.

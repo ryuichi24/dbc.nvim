@@ -75,6 +75,7 @@ identifiers and literal values using the database's own rules. The runner uses
 
 - MySQL: connection → database → table/view → column.
 - PostgreSQL: connection → database → schema → table/view → column.
+- SQLite: connection → configured database file → table/view → column.
 
 The current renderer uses `kind = "table"` with `detail = "view"` for views, and
 `kind = "column"` for leaves. `database` and `schema` kinds select the database

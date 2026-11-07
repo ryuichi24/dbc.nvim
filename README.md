@@ -1,13 +1,73 @@
 # dbc.nvim
 
 A native-buffer database workspace for Neovim 0.10+. Browse schemas, edit SQL,
-execute it asynchronously with the installed `mysql` or `psql` CLI, and navigate/yank
+execute it asynchronously with the installed `mysql`, `psql`, or `sqlite3` CLI, and navigate/yank
 results using ordinary Vim motions. No runtime plugin dependencies.
 
 ## Setup
 
 Install this repository with your plugin manager, install the appropriate database
 CLI, and configure client-native authentication.
+
+Connections can be managed independently of your Neovim configuration in a local
+JSON file. Run `:Dbc`, then press `a` on a connection row or sidebar header (or `:Dbc add_connection`)
+to add a connection. An editable Vim buffer shows all fields together: adapter,
+name, database, and optional client connection settings. Edit the `field: value`
+lines using ordinary Vim motions and insert mode, then place the cursor on `Add`
+and press Enter to save it locally and open a bound query tab.
+Press `q` in normal mode to cancel. Validation or save errors keep the form open
+with your edits intact. Blank optional fields are omitted.
+
+To remove a saved connection, select its connection row in the sidebar and press
+`d`. A confirmation popup opens with `Cancel` selected. Move to `Remove` and
+press Enter to delete the JSON entry, or press Enter on `Cancel`, `q`, or Escape
+to cancel. This removes only the saved connection profile, not the database;
+existing query tabs retain their bindings. Connections supplied through
+`setup().connections` must be removed from your Lua configuration instead.
+
+Use `:Dbc edit_connections` to open the JSON file in a separate tab. Its default
+location is `stdpath("data")/dbc/connections.json`. The file contains an array:
+
+```json
+[
+  {
+    "name": "local-sqlite",
+    "adapter": "sqlite",
+    "database": "/absolute/path/to/app.db"
+  },
+  {
+    "name": "postgres-dev",
+    "adapter": "postgres",
+    "database": "app_development",
+    "service": "local-dev"
+  }
+]
+```
+
+Save your edits, then return with `:Dbc` or run `:Dbc reload_connections` in the
+dashboard to reload the file. You can add, edit, or remove entries manually;
+the file accepts the same profile fields as Lua configuration, including provider
+options. Invalid JSON or duplicate names produce an error without replacing the
+currently loaded connections. Existing query tabs retain their bound settings;
+create a new query using the reloaded connection to use changed settings.
+
+The JSON file is shared across working directories by default. To use a different
+file, such as a project-local connection file, configure:
+
+```lua
+require("dbc").setup({
+  connections_file = vim.fn.getcwd() .. "/.dbc/connections.json",
+})
+```
+
+The file is read when the dashboard opens or reloads. A missing file starts empty
+and is created when adding a connection or using `:Dbc edit_connections`.
+Dashboard additions preserve existing JSON entries. Names must be unique across
+the file and any Lua-configured connections. Use client-native authentication
+or providers rather than storing a `password` field. The connection form covers
+direct SQLite/MySQL/PostgreSQL connections; edit the file for advanced options.
+
+Lua-configured connections remain supported and appear alongside JSON entries:
 
 ```lua
 require("dbc").setup({
@@ -21,6 +81,12 @@ require("dbc").setup({
       -- executable = "mysql",
       -- defaults_file = "/path/to/mysql.cnf",
       -- host = "127.0.0.1", port = 3306, user = "app", socket = "...",
+    },
+    {
+      name = "sqlite-local",
+      adapter = "sqlite",
+      database = "/absolute/path/to/app.db",
+      -- executable = "sqlite3",
     },
     {
       name = "postgres-dev",
@@ -64,6 +130,12 @@ PostgreSQL uses `psql` 12+ (CSV output), `.pgpass`/`passfile`, and optionally
 service defaults. `--no-password` prevents hidden password prompts;
 `--no-psqlrc` avoids startup configuration changing the result format.
 
+SQLite uses `sqlite3` 3.33+ with `adapter = "sqlite"` and a required `database`
+file path (prefer an absolute path). No authentication settings are needed.
+The sidebar shows the configured file, its tables/views, and their columns.
+CREATE TABLE, INSERT, UPDATE, and SELECT preview actions are supported; CREATE
+DATABASE is not applicable. SQLite creates a missing database file when opened.
+
 ## Workflow
 
 1. `:Dbc` opens/focuses a dedicated tabpage with a schema sidebar, SQL editor,
@@ -77,10 +149,11 @@ service defaults. `--no-password` prevents hidden password prompts;
 3. On a table or view, `r` opens a new read query tab with `SELECT * ... LIMIT 100`
    (`p` is also supported).
    Review it and execute explicitly; previews do not run automatically.
-   Press `a` on a connection/profile for a `CREATE DATABASE` template,
+    Press `a` on a database/schema to create a table, or on a table to insert a record.
+    Press `ga` on a connection/profile for a `CREATE DATABASE` template,
    or on a database to open a new query tab with a `CREATE TABLE` template,
    or on a table to create an `INSERT` template. PostgreSQL schema nodes also
-   support `a` and prefill the schema name. Press `u` on a table to open an
+   support `ga` and prefill the schema name. Press `u` on a table to open an
    `UPDATE` template with column assignments and a `WHERE <condition>` placeholder.
 4. In the query buffer, `:Dbc run` or `<localleader>r` runs the entire buffer.
    The pane header shows the query's bound connection and database, independently
@@ -95,6 +168,9 @@ service defaults. `--no-password` prevents hidden password prompts;
 | --- | --- |
 | `:Dbc` / `:Dbc open` | Open or focus workspace |
 | `:Dbc connect` | Choose connection and create a bound query |
+| `:Dbc add_connection` | Open an editable connection form; Enter on `Add` saves to JSON (`a` in sidebar) |
+| `:Dbc edit_connections` | Open the local connections JSON file for editing |
+| `:Dbc reload_connections` | Reload JSON connections into the dashboard |
 | `:Dbc query` | New SQL buffer using selected connection/database |
 | `:Dbc next_query` / `:Dbc previous_query` | Switch query tabs (`gt` / `gT` in editor) |
 | `[index]gt` (in query editor) | Jump to a query tab by its 1-based position (for example, `3gt`) |
@@ -183,7 +259,7 @@ end
 
 ### Query templates
 
-Sidebar `a` creates editable SQL in a new query tab, bound to the item under the
+Sidebar `ga` creates editable SQL in a new query tab, bound to the item under the
 cursor. It preserves your existing query tabs and focuses the first `<...>`
 placeholder. On a connection/profile, it creates:
 
@@ -220,7 +296,7 @@ prefill it, and INSERT templates qualify the table with its schema.
 
 ### Add your own query actions
 
-Generators are registered modules. Sidebar `a` uses the contextual default;
+Generators are registered modules. Sidebar `ga` uses the contextual default;
 `A` opens a picker containing all applicable actions, including your extensions.
 `r` (or `p`) invokes the registered SELECT preview action.
 
@@ -286,6 +362,15 @@ processes; a retained tunnel does not retain a SQL session. MySQL profiles also
 support `ssl_ca`, `ssl_mode`, `protocol`, and `enable_cleartext_plugin`.
 
 ## Session and output limitations
+
+SQLite uses CSV output and supports **one result-producing statement per run**.
+DDL/DML can precede that statement in the same run. NULL uses a fresh per-run
+marker; an exact marker collision would decode as NULL. Empty SELECT results
+may not include column headers. Select `hex(column)` for binary data. SQLite
+dot commands and output-format overrides are unsupported. Startup `.sqliterc`
+files are skipped and SQL errors stop execution. ATTACH, temporary tables, and
+transactions do not persist across runs; `:memory:` starts empty on every run
+and therefore is unsuitable for a browsable persistent workspace.
 
 **Every execution creates a new client session.** Transactions, `USE`, session
 variables, and temporary tables do not persist across runs. Related SQL must be
@@ -366,6 +451,18 @@ Each result displays its fetch timestamp and a reminder to rerun the query for
 the latest data. Restoring tabs does not execute queries automatically.
 
 Use `<localleader>x` to close a query tab or delete its buffer with `:bdelete` to
-remove it from saved tabs. Closing the last tab creates a fresh blank tab.
+remove it from saved tabs. Closing the sole remaining tab keeps it open;
+deleting its buffer creates a fresh blank tab.
 Closing the dashboard preserves open tabs. Storage is under
 `stdpath("data")/dbc/`.
+# Updating a result row
+
+In the results pane, visually select one data row with `V`, then press `u`
+(or use `:'<,'>Dbc update`). Normal-mode `u` updates the row under the cursor.
+This opens a new query tab with current values in `SET` and the complete primary
+key in `WHERE`; edit the SQL and run it when ready. No update runs automatically.
+
+Row updates currently support `SELECT * FROM table` with an optional `LIMIT`.
+PostgreSQL requires a schema-qualified table. The table must have a primary key;
+generated columns are omitted. Joins, expressions, and multiple statements are
+not supported. Values come from the fetched result snapshot.

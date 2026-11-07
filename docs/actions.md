@@ -5,7 +5,7 @@ plugins use the same API; adding a generator does not require editing the sideba
 database adapter dispatch, or connection providers.
 
 ```text
-Sidebar a / A / r / p or require("dbc").action(id)
+Sidebar ga / A / r / p or require("dbc").action(id)
   → applicable action from registry
   → declared metadata loaders
   → action.generate(ctx)
@@ -15,7 +15,7 @@ Sidebar a / A / r / p or require("dbc").action(id)
 
 ## Controls and built-ins
 
-- `a`: run the highest-priority applicable action marked `default = true`.
+- `ga`: run the highest-priority applicable action marked `default = true`.
   If no default applies, open the action picker.
 - `A` or `:Dbc actions`: choose from applicable built-in and registered actions.
 - `r` (or `p`): open a read query using the `preview` action directly.
@@ -81,7 +81,7 @@ needed. Generate only SQL; execution remains an explicit user action.
 | `available(ctx)` | Optional synchronous predicate for further filtering, before metadata loading |
 | `requires` | Optional list of metadata names, or a function returning that list |
 | `allow_missing_metadata` | Default false: metadata errors prevent generation. True allows generator fallback |
-| `default` | Default false: whether `a` may select this action directly |
+| `default` | Default false: whether `ga` may select this action directly |
 | `priority` | Finite number, default 0; larger values sort/select first |
 
 Equal priorities are ordered by action ID, so picker/default behavior is stable.
@@ -193,3 +193,13 @@ MySQL/PostgreSQL adapters no longer contain a template-dispatch function.
 
 See [the adapter contract](adapters.md) and [connection providers](providers.md)
 for the separate database and connection interfaces.
+# Result-row updates
+
+Select a single result data row with `V` and press `u`, or run `:Dbc update`
+on that row. A new query tab opens with its current values, excluding primary
+keys and generated columns from `SET`. All primary-key columns identify the row
+in `WHERE`. The statement is not executed automatically.
+
+Supported source queries are `SELECT * FROM table` with an optional `LIMIT`.
+PostgreSQL table names must be schema-qualified. Joins, expressions, multiple
+statements, and tables without primary keys are rejected.
