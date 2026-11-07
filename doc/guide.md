@@ -114,13 +114,14 @@ require("dbc").setup({
     },
   },
   ui = {
-    sidebar_width = 30,
-    results_height = 14,
+    resize_step = 8, -- rows/columns per resize keypress (positive integer)
+    sidebar_width = 50,
+    results_height = 30,
     -- Each pane supports independent Vim line-number options (default: false).
     panes = {
-      sidebar = { number = true, relativenumber = true },
-      query = { number = true, relativenumber = true },
-      results = { number = true, relativenumber = true },
+      sidebar = { width = 50, number = true, relativenumber = true },
+      query = { number = true, relativenumber = true }, -- optional width or height
+      results = { height = 30, number = true, relativenumber = true },
     },
   },
   execution = {
@@ -131,6 +132,18 @@ require("dbc").setup({
   mappings = { run = "<localleader>r", cancel = "<localleader>c" },
 })
 ```
+
+Pane sizes are positive integers in columns (`width`) or rows (`height`) and
+are clamped to fit the editor. By default the sidebar requests 50 columns,
+results request 30 rows, and the query pane fills the remaining space. Set
+`ui.panes.sidebar.width`, `ui.panes.query.width` / `height`, or
+`ui.panes.results.width` / `height` to customize these initial sizes.
+The sidebar always spans the full height (its `height` has no effect).
+Query and results share a width: sidebar width takes priority, followed by
+query width, then results width. Query height takes priority over results
+height; the other pane fills the remaining height. Pane settings override the
+legacy `ui.sidebar_width` and `ui.results_height` defaults. Manual resizing
+overrides these initial sizes until the dashboard is closed.
 
 `adapter` defaults to `mysql` for backward compatibility. MySQL client profiles
 supply authentication (for example with `mysql_config_editor`); explicit
@@ -175,7 +188,12 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
    of the current sidebar selection; `(default)` means the client's default database.
    `:2,5Dbc run` or a visual selection followed by the run mapping executes
    whole selected lines, including for characterwise/blockwise selections.
-5. Navigate with `<C-w>`, search and yank normally. Results render escaped
+5. Navigate with `<C-h/j/k/l>` or `<C-w>w`, search and yank normally. Resize
+   the focused pane with `<C-w>h/j/k/l` (narrow/shrink/grow/widen), then repeat
+   with plain `h/j/k/l`. Any other key or pane change exits resize mode and
+   restores normal mappings. The sidebar spans the full height, so only its
+   width changes. Neighboring panes adjust together; sizes are retained while
+   the dashboard is open, including after an editor resize. Results render escaped
    control characters, `NULL`, and `""` for empty strings. `yc` yanks the raw
    cell under the cursor; `yr` yanks an escaped TSV row to the unnamed register.
 

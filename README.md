@@ -41,7 +41,9 @@ authentication, connection files, UI options, and execution limits.
    Generated SQL is editable and never runs automatically.
 4. Run the buffer with `<localleader>r` or `:Dbc run`. Select lines visually to
    run only that range.
-5. Navigate panes with `<C-w>`. In results, `yc` copies a raw cell and `yr`
+5. Navigate panes with `<C-h/j/k/l>` or `<C-w>w`. Resize with `<C-w>` followed
+   by `h/j/k/l`, then repeat with plain `h/j/k/l` (any other key exits).
+   In results, `yc` copies a raw cell and `yr`
    copies a TSV row. Press `u` on a row to generate an editable UPDATE query
    for [supported queries](doc/guide.md#updating-a-result-row).
 
