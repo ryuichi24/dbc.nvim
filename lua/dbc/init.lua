@@ -15,6 +15,22 @@ local defaults = {
 }
 M.config = vim.deepcopy(defaults)
 
+--- Build an AWS SSM/RDS IAM profile without opening a connection.
+--- Config accepts adapter/database and all aws_ssm_rds_iam provider options.
+function M.rds_connection(name, config)
+	local provider = vim.deepcopy(config)
+	local profile = {
+		name = name,
+		adapter = provider.adapter or "mysql",
+		database = provider.database,
+		provider = provider,
+	}
+	provider.adapter = nil
+	provider.database = nil
+	provider.name = "aws_ssm_rds_iam"
+	return profile
+end
+
 function M.setup(opts)
 	local config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
 
