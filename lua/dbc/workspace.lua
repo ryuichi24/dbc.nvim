@@ -145,6 +145,49 @@ local function query_header(state)
 	vim.wo[win].winbar = table.concat(tabs, "|") .. " %<" .. text:gsub("[%c]", " "):gsub("%%", "%%%%")
 end
 
+local function results_header(state)
+	local win = state.results_win
+
+	if state.disposed or not api.nvim_win_is_valid(win) then
+		return
+	end
+
+	local text = ""
+	api.nvim_win_call(win, function()
+		local top = vim.fn.line("w0")
+		local lines = api.nvim_buf_get_lines(0, 0, top, false)
+
+		for row = top, 2, -1 do
+			if lines[row]:match("^| [%- |]+ |$") and lines[row - 1]:match("^| ") then
+				if row < top and lines[top]:match("^| ") then
+					local left = vim.fn.winsaveview().leftcol
+					local header = lines[row - 1]
+					local offset = 0
+
+					for char in header:gmatch("[\1-\127\194-\244][\128-\191]*") do
+						local width = vim.fn.strdisplaywidth(char)
+
+						if offset + width > left then
+							text = text .. (offset < left and string.rep(" ", offset + width - left) or char)
+						end
+
+						offset = offset + width
+					end
+
+					text = string.rep(" ", vim.fn.getwininfo(win)[1].textoff) .. text
+				end
+
+				break
+			end
+		end
+	end)
+	local bar = text:gsub("%%", "%%%%")
+
+	if vim.wo[win].winbar ~= bar then
+		vim.wo[win].winbar = bar
+	end
+end
+
 local function focus(state, name)
 	api.nvim_set_current_tabpage(state.tab)
 
@@ -1301,6 +1344,12 @@ function M.open(config)
 		group = "DbcWorkspace" .. serial,
 		callback = function()
 			dispose(state)
+		end,
+	})
+	api.nvim_create_autocmd({ "WinScrolled", "WinResized", "BufWinEnter", "TextChanged" }, {
+		group = "DbcWorkspace" .. serial,
+		callback = function()
+			results_header(state)
 		end,
 	})
 	api.nvim_create_autocmd("VimResized", {
