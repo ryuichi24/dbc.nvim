@@ -93,7 +93,7 @@ function M.command(args)
 	local action = args.fargs[1] or "open"
 	local workspace = require("dbc.workspace")
 
-	if action == "open" then
+	if action == "open" or action == "show" then
 		M.open()
 	elseif action == "run" then
 		M.run(args.range > 0 and args.line1 or nil, args.range > 0 and args.line2 or nil)
@@ -118,6 +118,7 @@ function M.command(args)
 			"cancel",
 			"refresh",
 			"close",
+			"hide",
 		}, action)
 	then
 		workspace[action]()

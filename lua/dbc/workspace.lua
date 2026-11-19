@@ -189,6 +189,10 @@ local function results_header(state)
 end
 
 local function focus(state, name)
+	if state.hidden then
+		return
+	end
+
 	api.nvim_set_current_tabpage(state.tab)
 
 	if not api.nvim_win_is_valid(state[name .. "_win"]) then
@@ -204,6 +208,10 @@ local function focus(state, name)
 
 	for _, option in ipairs({ "number", "relativenumber" }) do
 		vim.wo[state[name .. "_win"]][option] = state.config.ui.panes[name][option]
+	end
+
+	if name ~= "query" then
+		vim.wo[state[name .. "_win"]].wrap = false
 	end
 
 	state.active_pane = name
@@ -1166,10 +1174,31 @@ function M.close()
 	end
 end
 
+function M.hide()
+	local state = require_workspace()
+	state.hidden = true
+	require("dbc.resize").stop()
+
+	for _, name in ipairs({ "sidebar", "query", "results" }) do
+		if api.nvim_win_is_valid(state[name .. "_win"]) then
+			api.nvim_win_close(state[name .. "_win"], true)
+		end
+	end
+
+	if api.nvim_win_is_valid(state.previous_win) then
+		api.nvim_set_current_win(state.previous_win)
+	end
+end
+
 function M.open(config)
 	assert(vim.fn.has("nvim-0.10") == 1, "dbc requires Neovim 0.10+")
 
 	if current and api.nvim_tabpage_is_valid(current.tab) then
+		if current.hidden then
+			current.previous_win = api.nvim_get_current_win()
+		end
+
+		current.hidden = false
 		M.reload_connections()
 		focus(current, "results")
 		focus(current, "sidebar")
@@ -1370,7 +1399,7 @@ function M.open(config)
 	api.nvim_create_autocmd("WinEnter", {
 		group = "DbcWorkspace" .. serial,
 		callback = function()
-			if state.disposed or api.nvim_get_current_tabpage() ~= state.tab then
+			if state.disposed or state.hidden or api.nvim_get_current_tabpage() ~= state.tab then
 				return
 			end
 

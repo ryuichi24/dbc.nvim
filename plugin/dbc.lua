@@ -17,6 +17,8 @@ end, {
 	complete = function()
 		return {
 			"open",
+			"show",
+			"hide",
 			"connect",
 			"add_connection",
 			"edit_connections",

@@ -213,7 +213,9 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
 | `:[range]Dbc run` | Run buffer or supplied line range |
 | `:Dbc cancel` | Stop active query (`<localleader>c` in editor) |
 | `:Dbc refresh` | Reload selected sidebar subtree (`R` on non-table/view nodes) |
-| `:Dbc close` | Close dashboard without force-deleting queries |
+| `:Dbc hide` | Hide dashboard while keeping running queries and connection resources alive |
+| `:Dbc show` | Show the dashboard again (also `:Dbc` or `:Dbc open`) |
+| `:Dbc close` | Close dashboard and connection resources without force-deleting queries |
 
 Sidebar `c` selects a connection; `q` closes the dashboard. Result `q` closes
 its window. Successful CREATE/ALTER/DROP/RENAME queries automatically refresh

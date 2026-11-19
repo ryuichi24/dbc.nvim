@@ -55,7 +55,9 @@ authentication, connection files, UI options, and execution limits.
 | `:Dbc pick_query`                   | Search open query tabs               |
 | `<localleader>c` / `:Dbc cancel`    | Stop the active query                |
 | `R` in sidebar                      | Open and run SELECT on a table/view; otherwise refresh subtree |
-| `:Dbc close`                        | Close the workspace                  |
+| `:Dbc hide`                         | Hide dashboard, keeping queries and connection resources alive |
+| `:Dbc show` / `:Dbc`                | Show the dashboard again             |
+| `:Dbc close`                        | Close workspace and connection resources |
 
 Query tabs and their last results are saved per working directory and restored
 when you reopen the workspace. Restoring tabs does not execute SQL; rerun queries

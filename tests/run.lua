@@ -213,6 +213,35 @@ local ok, err = xpcall(function()
 	vim.api.nvim_buf_set_lines(query, 0, -1, false, { "FAIL", "SELECT 1" })
 	vim.cmd("2Dbc run")
 	local workspace = require("dbc.workspace")
+	local runner = state.runner
+	local cancel_query = state.cancel
+	vim.cmd("Dbc hide")
+
+	assert(state.hidden and not state.disposed)
+	assert(state.runner == runner and state.cancel == cancel_query)
+	assert(vim.api.nvim_get_current_win() == original_win)
+
+	for _, name in ipairs({ "sidebar", "query", "results" }) do
+		assert(not vim.api.nvim_win_is_valid(state[name .. "_win"]))
+	end
+
+	assert(vim.wait(3000, function()
+		return state.cancel == nil
+	end))
+	assert(table.concat(vim.api.nvim_buf_get_lines(state.results, 0, -1, false), "\n"):match("returned rows"))
+	assert(vim.api.nvim_get_current_win() == original_win)
+
+	vim.cmd("Dbc show")
+
+	assert(not state.hidden and state.runner == runner and state.query == query)
+	assert(vim.api.nvim_get_current_win() == state.query_win)
+	assert(vim.wo[state.query_win].number and vim.wo[state.query_win].relativenumber)
+	assert(not vim.wo[state.results_win].wrap)
+
+	vim.cmd("Dbc hide")
+
+	assert(plugin.open() == state and not state.hidden)
+
 	local running_results = state.results
 	workspace.query(nil, "SELECT another_query")
 	local idle_results = state.results
