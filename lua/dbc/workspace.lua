@@ -6,6 +6,32 @@ local current
 local serial = 0
 local render_tree
 local activate_query
+local select_query
+local query_panes = require("dbc.query_panes")
+
+local function layout_queries(state, geometry)
+	if not state.query_tree then
+		return
+	end
+
+	query_panes.layout(state.query_tree, geometry, function(pane, config)
+		if not api.nvim_win_is_valid(pane.win) and not state.hidden and not state.disposed then
+			config.relative = "editor"
+			config.style = "minimal"
+			config.border = "rounded"
+			pane.win = api.nvim_open_win(pane.buf, false, config)
+
+			for _, option in ipairs({ "number", "relativenumber" }) do
+				vim.wo[pane.win][option] = state.config.ui.panes.query[option]
+			end
+		end
+
+		if api.nvim_win_is_valid(pane.win) then
+			config.relative = "editor"
+			api.nvim_win_set_config(pane.win, config)
+		end
+	end)
+end
 
 local function save_queries(state)
 	if state.restoring or state.disposed then
@@ -112,15 +138,29 @@ local function resize(state, key)
 	end
 
 	for name, config in pairs(layout(state)) do
-		if api.nvim_win_is_valid(state[name .. "_win"]) then
+		if name == "query" and state.query_tree then
+			layout_queries(state, config)
+		elseif api.nvim_win_is_valid(state[name .. "_win"]) then
 			config.relative = "editor"
 			api.nvim_win_set_config(state[name .. "_win"], config)
 		end
 	end
 end
 
-local function query_header(state)
-	local win = state.query_win
+local function query_header(state, target)
+	if not target and state.query_pane then
+		state.query_pane.buf = state.query
+	end
+
+	if not target and state.query_panes then
+		for _, pane in ipairs(state.query_panes) do
+			query_header(state, pane.win)
+		end
+
+		return
+	end
+
+	local win = target or state.query_win
 
 	if not api.nvim_win_is_valid(win) then
 		return
@@ -131,7 +171,6 @@ local function query_header(state)
 	local text = "Query · No database bound"
 
 	if binding then
-		state.query = buf
 		text = string.format("Connection: %s · Database: %s", binding.profile.name, binding.database or "(default)")
 	end
 
@@ -203,6 +242,10 @@ local function focus(state, name)
 		state[name .. "_win"] = api.nvim_open_win(state[name], false, config)
 	end
 
+	if name == "query" and state.query_pane then
+		state.query_pane.win = state.query_win
+	end
+
 	api.nvim_set_current_win(state[name .. "_win"])
 	api.nvim_win_set_buf(state[name .. "_win"], state[name])
 
@@ -244,8 +287,40 @@ local function navigation(state, buf)
 		end
 
 		local target = directions[direction] and directions[direction][pane]
+		local win = api.nvim_get_current_win()
+		local config = api.nvim_win_get_config(win)
+		local nearest, distance
+
+		for _, candidate in ipairs(state.query_panes or {}) do
+			if candidate.win ~= win and api.nvim_win_is_valid(candidate.win) then
+				local other = api.nvim_win_get_config(candidate.win)
+				local dx = other.col - config.col
+				local dy = other.row - config.row
+				local aligned = (direction == "h" and dx < 0 and math.abs(dy) < config.height)
+					or (direction == "l" and dx > 0 and math.abs(dy) < config.height)
+					or (direction == "k" and dy < 0 and math.abs(dx) < config.width)
+					or (direction == "j" and dy > 0 and math.abs(dx) < config.width)
+				local delta = math.abs(dx) + math.abs(dy)
+
+				if pane == "query" and aligned and (not distance or delta < distance) then
+					nearest, distance = candidate, delta
+				end
+			end
+		end
+
+		if nearest then
+			api.nvim_set_current_win(nearest.win)
+			return
+		end
 
 		if direction == "w" then
+			for index, candidate in ipairs(state.query_panes or {}) do
+				if candidate.win == win and state.query_panes[index + 1] then
+					api.nvim_set_current_win(state.query_panes[index + 1].win)
+					return
+				end
+			end
+
 			target = ({ sidebar = "query", query = "results", results = "sidebar" })[pane]
 		elseif direction == "p" then
 			target = state.previous_pane
@@ -481,7 +556,7 @@ end
 render_tree = function(state)
 	local lines = {
 		"a: add connection/table/record · d: remove connection · Enter: DB",
-		"ga: default · u: update · A: actions · n: query · p: preview",
+		"ga: default · u: update · A: actions · n: query · p: preview · h: hide",
 		"",
 	}
 	state.nodes = {}
@@ -542,7 +617,7 @@ local function selected_node(state)
 	return state.nodes[api.nvim_win_get_cursor(state.sidebar_win)[1]]
 end
 
-activate_query = function(state, tab)
+select_query = function(state, tab)
 	state.query = tab.buf
 	state.results = tab.results
 	state.cells = tab.cells
@@ -551,9 +626,121 @@ activate_query = function(state, tab)
 		api.nvim_win_set_buf(state.results_win, state.results)
 	end
 
-	focus(state, "query")
+	query_header(state)
 	render_tree(state)
 	save_queries(state)
+end
+
+activate_query = function(state, tab)
+	state.activating_query = true
+	select_query(state, tab)
+	focus(state, "query")
+
+	for _, pane in ipairs(state.query_panes or {}) do
+		local exists = false
+
+		for _, query in ipairs(state.queries) do
+			exists = exists or query.buf == pane.buf
+		end
+
+		if not exists then
+			pane.buf = tab.buf
+
+			if api.nvim_win_is_valid(pane.win) then
+				api.nvim_win_set_buf(pane.win, tab.buf)
+			end
+		end
+	end
+
+	layout_queries(state, layout(state).query)
+	query_header(state)
+	state.activating_query = false
+	render_tree(state)
+	save_queries(state)
+end
+
+function M.split_query(direction)
+	local state = require_workspace()
+	direction = direction or "horizontal"
+	assert(direction == "horizontal" or direction == "vertical", "Invalid query split direction")
+	local original = state.query_pane
+
+	if not original then
+		original = { win = state.query_win, buf = state.query }
+		state.query_panes = { original }
+		state.query_tree = original
+	end
+
+	local geometry = api.nvim_win_get_config(state.query_win)
+	local dimension = direction == "vertical" and "width" or "height"
+	assert(geometry[dimension] >= 10, "Query pane is too small to split")
+	local pane = { win = -1, buf = state.query }
+	state.query_tree = query_panes.split(state.query_tree, original, pane, direction)
+	table.insert(state.query_panes, pane)
+	state.query_pane = pane
+	state.query_win = -1
+	focus(state, "query")
+	pane.win = state.query_win
+	layout_queries(state, layout(state).query)
+	local target
+
+	for _, tab in ipairs(state.queries) do
+		local visible = false
+
+		for _, existing in ipairs(state.query_panes) do
+			visible = visible or existing.buf == tab.buf
+		end
+
+		if not visible then
+			target = tab
+			break
+		end
+	end
+
+	if target then
+		activate_query(state, target)
+	else
+		M.query(state.bindings[original.buf])
+	end
+end
+
+function M.vsplit_query()
+	M.split_query("vertical")
+end
+
+function M.close_query_pane()
+	local state = require_workspace()
+
+	if not state.query_panes or #state.query_panes <= 1 then
+		return
+	end
+
+	local pane = state.query_pane
+	state.query_tree = query_panes.remove(state.query_tree, pane)
+
+	for index, existing in ipairs(state.query_panes) do
+		if existing == pane then
+			table.remove(state.query_panes, index)
+			break
+		end
+	end
+
+	local next_pane = state.query_panes[1]
+	state.query_pane = next_pane
+	state.query_win = next_pane.win
+
+	for _, tab in ipairs(state.queries) do
+		if tab.buf == next_pane.buf then
+			activate_query(state, tab)
+			break
+		end
+	end
+
+	if api.nvim_win_is_valid(pane.win) then
+		api.nvim_win_close(pane.win, true)
+	end
+
+	layout_queries(state, layout(state).query)
 end
 
 function M.goto_query(index)
@@ -663,6 +850,9 @@ function M.query(binding, text)
 		M.query(state.bindings[state.query])
 	end, { buffer = buf, desc = "New query tab" })
 	vim.keymap.set("n", "<localleader>x", M.close_query, { buffer = buf, desc = "Close query tab (preserve buffer)" })
+	vim.keymap.set("n", "<localleader>v", M.vsplit_query, { buffer = buf, desc = "Split query pane side by side" })
+	vim.keymap.set("n", "<localleader>s", M.split_query, { buffer = buf, desc = "Split query pane stacked" })
+	vim.keymap.set("n", "<localleader>q", M.close_query_pane, { buffer = buf, desc = "Close query pane" })
 	api.nvim_buf_attach(buf, false, {
 		on_lines = function()
 			vim.schedule(function()
@@ -693,8 +883,16 @@ function M.query(binding, text)
 
 				if #state.queries == 0 then
 					M.query()
-				elseif state.query == buf then
-					activate_query(state, state.queries[1])
+				else
+					local target = state.queries[1]
+
+					for _, query in ipairs(state.queries) do
+						if query.buf == state.query then
+							target = query
+						end
+					end
+
+					activate_query(state, target)
 				end
 			end)
 		end,
@@ -1120,6 +1318,13 @@ local function dispose(state)
 
 	save_queries(state)
 	state.disposed = true
+
+	for _, pane in ipairs(state.query_panes or {}) do
+		if api.nvim_win_is_valid(pane.win) then
+			api.nvim_win_close(pane.win, true)
+		end
+	end
+
 	require("dbc.resize").stop()
 
 	for job in pairs(state.action_jobs) do
@@ -1177,6 +1382,13 @@ end
 function M.hide()
 	local state = require_workspace()
 	state.hidden = true
+
+	for _, pane in ipairs(state.query_panes or {}) do
+		if api.nvim_win_is_valid(pane.win) then
+			api.nvim_win_close(pane.win, true)
+		end
+	end
+
 	require("dbc.resize").stop()
 
 	for _, name in ipairs({ "sidebar", "query", "results" }) do
@@ -1203,6 +1415,13 @@ function M.open(config)
 		focus(current, "results")
 		focus(current, "sidebar")
 		focus(current, "query")
+
+		if current.query_panes then
+			current.query_pane.win = current.query_win
+			layout_queries(current, layout(current).query)
+			query_header(current)
+		end
+
 		return current
 	end
 
@@ -1322,6 +1541,7 @@ function M.open(config)
 	end)
 	map("d", M.remove_connection)
 	map("q", M.close)
+	map("h", M.hide)
 	state.configure_results = function(buf)
 		vim.keymap.set("n", "u", M.update, { buffer = buf, desc = "Open UPDATE for result row" })
 		vim.keymap.set(
@@ -1389,7 +1609,9 @@ function M.open(config)
 			end
 
 			for name, geometry in pairs(layout(state)) do
-				if api.nvim_win_is_valid(state[name .. "_win"]) then
+				if name == "query" and state.query_tree then
+					layout_queries(state, geometry)
+				elseif api.nvim_win_is_valid(state[name .. "_win"]) then
 					geometry.relative = "editor"
 					api.nvim_win_set_config(state[name .. "_win"], geometry)
 				end
@@ -1399,11 +1621,33 @@ function M.open(config)
 	api.nvim_create_autocmd("WinEnter", {
 		group = "DbcWorkspace" .. serial,
 		callback = function()
-			if state.disposed or state.hidden or api.nvim_get_current_tabpage() ~= state.tab then
+			if
+				state.disposed
+				or state.hidden
+				or state.activating_query
+				or api.nvim_get_current_tabpage() ~= state.tab
+			then
 				return
 			end
 
 			local win = api.nvim_get_current_win()
+
+			for _, pane in ipairs(state.query_panes or {}) do
+				if pane.win == win then
+					state.query_pane = pane
+					state.query_win = win
+					state.active_pane = "query"
+
+					for _, tab in ipairs(state.queries) do
+						if tab.buf == api.nvim_win_get_buf(win) then
+							select_query(state, tab)
+							break
+						end
+					end
+
+					return
+				end
+			end
 
 			for _, name in ipairs({ "sidebar", "query", "results" }) do
 				if win == state[name .. "_win"] then
@@ -1413,7 +1657,20 @@ function M.open(config)
 			end
 
 			if api.nvim_win_get_config(win).relative == "" then
-				focus(state, state.active_pane or "query")
+				if state.query_panes then
+					vim.schedule(function()
+						if
+							not state.disposed
+							and not state.hidden
+							and api.nvim_buf_is_valid(state.query)
+							and api.nvim_get_current_win() == win
+						then
+							focus(state, state.active_pane or "query")
+						end
+					end)
+				else
+					focus(state, state.active_pane or "query")
+				end
 			end
 		end,
 	})
@@ -1422,6 +1679,7 @@ function M.open(config)
 		callback = function(event)
 			if
 				not state.disposed
+				and not state.activating_query
 				and api.nvim_win_is_valid(state.query_win)
 				and api.nvim_win_get_buf(state.query_win) == event.buf
 			then
@@ -1429,7 +1687,7 @@ function M.open(config)
 
 				for _, tab in ipairs(state.queries) do
 					if tab.buf == buf and state.query ~= buf then
-						activate_query(state, tab)
+						select_query(state, tab)
 					end
 				end
 
