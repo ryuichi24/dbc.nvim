@@ -209,6 +209,8 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
 | `[index]gt` (in query editor) | Jump to a query tab by its 1-based position (for example, `3gt`) |
 | `:Dbc pick_query` | Search and select an open query tab |
 | `:Dbc close_query` | Close current query tab, preserving its SQL buffer |
+| `:Dbc vsplit_query` / `:Dbc split_query` | Split query editors side by side / stacked |
+| `:Dbc close_query_pane` | Close the focused query pane, preserving its tabs |
 | `:Dbc actions` | Pick a query-generation action for the selected sidebar item (`A`) |
 | `:[range]Dbc run` | Run buffer or supplied line range |
 | `:Dbc cancel` | Stop active query (`<localleader>c` in editor) |
@@ -217,7 +219,7 @@ DATABASE is not applicable. SQLite creates a missing database file when opened.
 | `:Dbc show` | Show the dashboard again (also `:Dbc` or `:Dbc open`) |
 | `:Dbc close` | Close dashboard and connection resources without force-deleting queries |
 
-Sidebar `c` selects a connection; `q` closes the dashboard. Result `q` closes
+Sidebar `c` selects a connection; `h` hides the dashboard; `q` closes it. Result `q` closes
 its window. Successful CREATE/ALTER/DROP/RENAME queries automatically refresh
 expanded table lists for the bound database; use `:Dbc refresh` for a manual refresh.
 The query header displays numbered tabs with the active tab highlighted. Use
@@ -226,6 +228,25 @@ The query header displays numbered tabs with the active tab highlighted. Use
 database binding, cursor position, and results. Executions finish in their
 originating tab even when you switch tabs while a query runs.
 Query buffers remain listed and may be saved with `:write path.sql`.
+
+### Split query panes
+
+In a query editor, press `<localleader>v` for a side-by-side split or
+`<localleader>s` for a stacked split. The new pane opens an existing query that
+is not currently visible, or creates a blank query using the original pane's
+database binding. You can split panes again to combine both layouts.
+
+Use `<C-h/j/k/l>` to move between panes and `<C-w>w` to cycle through them.
+Each editor switches tabs independently with `gt`, `gT`, `[index]gt`, or
+`:Dbc pick_query`. The shared results pane follows the focused query, including
+its row/cell copy and update actions. Only one query can execute at a time.
+
+Press `<localleader>q` or run `:Dbc close_query_pane` to close the focused editor
+pane; its query tabs and SQL buffers are preserved. The last editor pane stays
+open. `<localleader>x` continues to close a query tab rather than a pane.
+Hiding and showing the dashboard preserves the split layout; restarting Neovim
+restores saved query tabs in a single editor pane.
+
 Results are formatted as Markdown tables in a `markdown` buffer, allowing
 Markdown-rendering plugins to style them. Row/cell copying preserves original values.
 

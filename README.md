@@ -51,11 +51,13 @@ authentication, connection files, UI options, and execution limits.
 | ----------------------------------- | ------------------------------------ |
 | `:Dbc connect`                      | Choose a connection and open a query |
 | `<localleader>t` / `<localleader>x` | Create / close a query tab           |
+| `<localleader>v` / `<localleader>s` | Split query panes side by side / stacked |
+| `<localleader>q` | Close query pane, preserving query tabs |
 | `gt` / `gT` / `3gt`                 | Next / previous / numbered query tab |
 | `:Dbc pick_query`                   | Search open query tabs               |
 | `<localleader>c` / `:Dbc cancel`    | Stop the active query                |
 | `R` in sidebar                      | Open and run SELECT on a table/view; otherwise refresh subtree |
-| `:Dbc hide`                         | Hide dashboard, keeping queries and connection resources alive |
+| `h` in sidebar / `:Dbc hide`        | Hide dashboard, keeping queries and connection resources alive |
 | `:Dbc show` / `:Dbc`                | Show the dashboard again             |
 | `:Dbc close`                        | Close workspace and connection resources |
 

@@ -31,6 +31,9 @@ COMMANDS                                                        *:Dbc*
 :Dbc next_query         Switch to the next query tab (gt).
 :Dbc previous_query     Switch to the previous query tab (gT).
 :Dbc close_query        Close query tab; preserve SQL buffer; keep one tab open.
+:Dbc vsplit_query       Split query editors side by side.
+:Dbc split_query        Split query editors vertically stacked.
+:Dbc close_query_pane   Close focused editor pane; preserve query tabs.
 :Dbc actions            Pick a query-generation action for selected sidebar item.
 :[range]Dbc run         Execute buffer or explicit whole-line range.
 :Dbc cancel             Stop the client process.
@@ -58,6 +61,11 @@ Editor header: shows the current query's connection and database.
                SQL, binding, cursor, and results. gt/gT cycle query tabs;
                <localleader>t creates a tab; <localleader>x closes a tab.
 Results: yc yank raw cell; yr yank escaped TSV row; q close result window.
+Query panes: <localleader>v side by side; <localleader>s stacked;
+             <localleader>q close pane (keep tabs and at least one pane).
+             <C-h/j/k/l> navigate; <C-w>w cycle panes. Each editor switches
+             query tabs independently; shared results follow the focused query.
+             Splits survive hide/show; restarts restore tabs in one editor.
 All panels support ordinary motions, searching, visual selections, and yanking.
 
 LIMITATIONS                                                     *dbc-sessions*
